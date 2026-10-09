@@ -1,0 +1,24 @@
+{
+ "name": "G+2 Collapse Rescue Simulator",
+ "short_name": "G+2 Rescue",
+ "description": "Search-and-rescue training simulator with VR mode.",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "landscape",
+ "background_color": "#14110e",
+ "theme_color": "#14110e",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}
