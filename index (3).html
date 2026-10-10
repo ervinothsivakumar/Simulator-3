@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14110e">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>G+2 Collapse Rescue</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: full-bleed first-person view; thin field-radio HUD pinned to the corners; one card for menu, briefing, pause and the trainee report. Single dark look by choice; the report prints black on white. */
+:root{
+  --bg:#14110e; --panel:rgba(22,18,14,.76); --line:rgba(255,236,210,.22);
+  --fg:#f3ead9; --dim:#b9ab94; --hi:#ff7a1a; --ok:#58d08b; --warn:#ffcf4a; --bad:#ff5a48;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif; --data:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--data);font-size:14px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas#view{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;pointer-events:none;font-size:12px;letter-spacing:.04em}
+.box{background:var(--panel);border:1px solid var(--line);padding:7px 11px;backdrop-filter:blur(3px)}
+.box span,.lbl{color:var(--dim);text-transform:uppercase;font-size:10px;display:block}
+#status{top:calc(env(safe-area-inset-top,0px) + 12px);left:16px;display:flex;gap:8px;flex-wrap:wrap;max-width:calc(100vw - 240px)}
+#status b{font-family:var(--display);font-size:24px;font-weight:700;line-height:1;display:block;font-variant-numeric:tabular-nums}
+#status b.sm{font-size:17px;line-height:24px}
+.slot{font-style:normal;margin-right:12px;color:var(--dim)}.slot.on{color:var(--hi)}
+#tasks{left:16px;top:calc(env(safe-area-inset-top,0px) + 140px);max-width:300px;line-height:1.6}
+#tasks i{font-style:normal;display:block;color:var(--dim)}#tasks i.on{color:var(--fg)}#tasks i.done{color:var(--ok)}
+#right{top:calc(env(safe-area-inset-top,0px) + 12px);right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+#locator{display:flex;align-items:center;gap:10px}
+#arrow{width:24px;height:24px;flex:none}
+#map{display:block;width:176px;height:138px}
+#prompt{left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24%);transform:translateX(-50%);text-align:center;min-width:200px;max-width:calc(100vw - 32px)}
+#prompt .bar{height:3px;background:var(--line);margin-top:6px}#prompt .bar i{display:block;height:100%;width:0;background:var(--hi)}
+#flash{left:50%;top:20%;transform:translateX(-50%);font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:.12em;color:var(--warn);text-shadow:0 2px 12px #000;opacity:0;transition:opacity .4s;text-align:center;width:calc(100vw - 32px)}
+#dot{left:50%;top:50%;width:5px;height:5px;margin:-2px;border-radius:50%;background:var(--fg);opacity:.7}
+#heat{inset:0;box-shadow:inset 0 0 140px 40px var(--bad);opacity:0;transition:opacity .25s}
+#zap{inset:0;background:var(--fg);opacity:0;transition:opacity .35s}
+#radio{left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 40px);max-width:min(460px,calc(100vw - 32px));border-left:3px solid var(--hi);line-height:1.45;font-size:13px}
+#hudBtns{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;gap:8px}
+#hudBtns button{font-size:15px;padding:7px 14px;background:var(--panel);color:var(--fg);border:1px solid var(--line)}
+#hudBtns button#bExit{border-color:var(--bad)}
+#keys{left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);color:var(--dim);font-size:11px}
+#overlay{position:fixed;inset:0;display:flex;padding:16px;background:linear-gradient(rgba(20,17,14,.6),rgba(20,17,14,.94));overflow:auto;touch-action:pan-y;user-select:text;-webkit-user-select:text}
+.card{margin:auto;max-width:640px;width:100%;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--hi);padding:20px 24px;backdrop-filter:blur(6px)}
+.card h1{font-family:var(--display);font-weight:700;font-size:38px;line-height:1;margin:0 0 4px;text-transform:uppercase;letter-spacing:.02em;text-wrap:balance}
+.card h2{font-family:var(--display);font-weight:700;font-size:20px;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 4px}
+.card .tag{color:var(--hi);font-size:11px;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px}
+.card p{color:var(--dim);font-size:13px;line-height:1.55;margin:8px 0}
+.card dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:12px;margin:10px 0}
+.card dt{color:var(--fg)} .card dd{margin:0;color:var(--dim)}
+.card table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0;font-variant-numeric:tabular-nums}
+.card td,.card th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.card th{color:var(--dim);font-weight:400;text-transform:uppercase;font-size:10px}
+.card td.n{text-align:right;white-space:nowrap}
+.card td small{color:var(--dim);display:block}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 16px;margin:12px 0}
+.form label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;display:flex;flex-direction:column;gap:4px;min-width:0}
+.form label.row{flex-direction:row;align-items:center;gap:8px;text-transform:none;font-size:13px}
+input[type=text],select{font:inherit;font-size:14px;color:var(--fg);background:rgba(0,0,0,.35);border:1px solid var(--line);padding:8px 10px;min-width:0;width:100%;box-sizing:border-box}
+input:focus-visible,select:focus-visible{outline:2px solid var(--hi);outline-offset:1px}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:14px}
+.modes button{text-align:left;padding:14px 16px;line-height:1.1}
+.modes button small{display:block;font-family:var(--data);font-size:11.5px;font-weight:400;letter-spacing:0;text-transform:none;margin-top:8px;line-height:1.45}
+.grade{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;margin:8px 0}
+.grade b{font-family:var(--display);font-size:60px;line-height:1;color:var(--hi)}
+.grade em{font-style:normal;font-family:var(--display);font-size:24px;text-transform:uppercase}
+.card ul{margin:8px 0;padding-left:18px;color:var(--dim);font-size:12.5px;line-height:1.5}
+.sig{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:34px;font-size:11px;color:var(--dim)}
+.sig div{border-top:1px solid var(--dim);padding-top:4px}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+button{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.1em;text-transform:uppercase;background:var(--hi);color:#1a0f05;border:0;padding:10px 20px;cursor:pointer}
+button.alt{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button:disabled{background:var(--line);color:var(--dim);cursor:default}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
+#touch{position:fixed;inset:0;pointer-events:none}
+#touch button{position:absolute;pointer-events:auto;right:16px;width:66px;height:66px;border-radius:50%;padding:0;font-size:13px;background:var(--panel);color:var(--fg);border:1px solid var(--line)}
+#tPin{bottom:calc(env(safe-area-inset-bottom,0px) + 316px)} #tItem{bottom:calc(env(safe-area-inset-bottom,0px) + 242px)} #tAct{bottom:calc(env(safe-area-inset-bottom,0px) + 168px)} #tSpray{bottom:calc(env(safe-area-inset-bottom,0px) + 94px)} #tTorch{bottom:calc(env(safe-area-inset-bottom,0px) + 20px)}
+#tPause{top:calc(env(safe-area-inset-top,0px) + 240px);width:50px!important;height:50px!important}
+#stick{position:absolute;width:110px;height:110px;border-radius:50%;border:1px solid var(--line);background:rgba(22,18,14,.35)}
+#stick i{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px;border-radius:50%;background:var(--line)}
+@media (max-width:760px){#tasks{display:none}#map{width:120px;height:94px}#status b{font-size:18px}#status b.sm{font-size:13px;line-height:18px}}
+@media print{
+  :root{--bg:#fff;--panel:#fff;--line:#999;--fg:#111;--dim:#333;--hi:#b24a00;--ok:#1a6a3a}
+  body{overflow:visible;background:#fff} canvas,.hud,#touch,.btns{display:none!important}
+  #overlay{position:static;background:none;padding:0;display:block} .card{max-width:none;border:0;padding:0;backdrop-filter:none}
+}
+</style>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+<div id="heat" class="hud"></div><div id="zap" class="hud"></div>
+<div id="hudAll" hidden>
+<div id="status" class="hud">
+  <div class="box" id="bCount"><span>Rescued</span><b id="count">0 / 6</b></div>
+  <div class="box"><span>Elapsed</span><b id="clock">00:00</b></div>
+  <div class="box"><span>Fires out</span><b id="fcount">0 / 3</b></div>
+  <div class="box"><span>Position</span><b class="sm" id="where">—</b></div>
+  <div class="box"><span>Alarm · mains</span><b class="sm" id="sys">Silent · LIVE</b></div>
+  <div class="box"><span>In hand · 3 slots</span><b class="sm" id="gear">Empty</b></div>
+</div>
+<div id="tasks" class="hud box"><span id="tasksLbl">Tasks</span><div id="taskList"></div></div>
+<div id="right" class="hud">
+  <div id="locator" class="box" hidden>
+    <svg id="arrow" viewBox="0 0 24 24"><path d="M12 2 L20 20 L12 15 L4 20 Z" fill="#ff7a1a"/></svg>
+    <div id="locText"></div>
+  </div>
+  <div class="box" id="mapBox"><span id="mapLbl">Floor plan</span><canvas id="map" width="352" height="276"></canvas></div>
+</div>
+<div id="dot" class="hud"></div>
+<div id="flash" class="hud"></div>
+<div id="prompt" class="hud box" hidden><span id="pText" style="color:var(--fg);text-transform:none;font-size:12px"></span><div class="bar"><i id="pBar"></i></div></div>
+<div id="radio" class="hud box" hidden><span>Instructor · radio</span><div id="rText"></div></div>
+<div id="hudBtns"><button id="bVR">Enter VR</button><button id="bExit">Exit</button></div>
+<div id="keys" class="hud">W A S D move · Shift run · 1 2 3 / Tab choose item · E use · R pull pin · Q or click spray · F torch · Esc or P pause / exit</div>
+</div>
+<div id="touch" hidden><div id="stick" hidden><i></i></div><button id="tPin">Pin</button><button id="tItem">Item</button><button id="tAct">Use</button><button id="tSpray">Spray</button><button id="tTorch">Torch</button><button id="tPause">II</button></div>
+
+<div id="overlay">
+  <div class="card">
+    <div class="tag" id="oTag">Building collapse · search and rescue simulator</div>
+    <h1 id="oTitle">G+2 Collapse Rescue</h1>
+    <div id="oBody">
+      <p>Train on the equipment first, then run the rescue drill in an earthquake-damaged three-storey building. An instructor guides you by radio, and you receive a trainee report at the end.</p>
+      <div class="form">
+        <label>Trainee name<input type="text" id="fName" maxlength="40" autocomplete="off" placeholder="Your name"></label>
+        <label>ID or batch<input type="text" id="fId" maxlength="30" autocomplete="off" placeholder="Optional"></label>
+        <label>Conditions<select id="fCond"><option value="day">Day, dust haze</option><option value="dusk">Dusk, low light</option></select></label>
+        <label>Drill support<select id="fAssist"><option value="guided">Guided: hints, chart, map icons</option><option value="assess">Assessment: no hints</option></select></label>
+        <label>Look sensitivity<input type="range" id="fSens" min="0.4" max="2" step="0.1" value="1"></label>
+        <label class="row"><input type="checkbox" id="fVoice" checked> Spoken instructor voice</label>
+      </div>
+      <div class="modes">
+        <button id="mTrain">1 · Equipment training<small>A walled yard with eight short lessons: alarm, extinguisher types and the pin, mains isolation, crowbar, casualty carry. About 6 minutes.</small></button>
+        <button id="mDrill">2 · Rescue drill<small>The collapsed building: six casualties in changing locations, three kinds of fire, live mains, jammed doors, aftershocks. Scored out of 100.</small></button>
+      </div>
+      <p id="vrMsg">VR headset: checking this device…</p>
+      <p id="loadMsg"></p>
+    </div>
+    <div class="btns" id="oBtns" hidden><button id="go">Start</button><button id="goVR" class="alt" hidden>Start in VR headset</button><button id="end" class="alt" hidden>End and get report</button><button id="menu" class="alt" hidden>Main menu</button>
+      <button id="bPrint" class="alt" hidden>Print or save as PDF</button><button id="bSave" class="alt" hidden>Download report</button><button id="bCopy" class="alt" hidden>Copy report text</button></div>
+  </div>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.8/build/index.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {computeBoundsTree, acceleratedRaycast} from 'three-mesh-bvh';
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+const $ = id => document.getElementById(id);
+const canvas = $('view');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xb7a58a); scene.fog = new THREE.FogExp2(0xb7a58a, 0.017);
+const camera = new THREE.PerspectiveCamera(72, 1, 0.08, 300); camera.rotation.order = 'YXZ'; const rig = new THREE.Group(); scene.add(rig); rig.add(camera);
+function resize(){ renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const hemi = new THREE.HemisphereLight(0xcdd6e4, 0x6d5c47, 0.5); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffdfb8, 2.7); sun.position.set(24, 30, 27); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, {left:-28, right:28, top:28, bottom:-28, near:1, far:95});
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04; scene.add(sun);
+const torch = new THREE.SpotLight(0xfff0d2, 15, 32, 0.48, 0.6, 1.7); torch.position.set(0.12, 0.1, 0); torch.castShadow = true;
+torch.shadow.mapSize.set(1024, 1024); torch.shadow.camera.near = 0.2; torch.shadow.bias = -0.001;
+camera.add(torch); const tt = new THREE.Object3D(); tt.position.set(0, -0.05, -1); camera.add(tt); torch.target = tt;
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z), s2 = () => Math.random() - 0.5;
+
+const sc = document.createElement('canvas'); sc.width = sc.height = 64; const sx = sc.getContext('2d');
+const gr = sx.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.4,'rgba(255,255,255,.55)'); gr.addColorStop(1,'rgba(255,255,255,0)'); sx.fillStyle = gr; sx.fillRect(0,0,64,64);
+const SPRITE = new THREE.CanvasTexture(sc);
+function cloud(n, opts){ const g = new THREE.BufferGeometry(), p = new Float32Array(n*3); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  const m = new THREE.PointsMaterial({map:SPRITE, transparent:true, depthWrite:false, sizeAttenuation:true, ...opts}); const pts = new THREE.Points(g, m); pts.frustumCulled = false; scene.add(pts); return {p, g, m, pts, n}; }
+const dustBox = [26, 12, 26], dust = cloud(1400, {size:0.09, color:0xfff0d7, opacity:0.4});
+for (let i=0;i<dust.n*3;i++) dust.p[i] = (Math.random()-.5) * dustBox[i%3];
+const SPRAY = cloud(180, {size:0.32, color:0xf4f4f0, opacity:0.5}), sprayV = new Float32Array(180*3), sprayL = new Float32Array(180); let sprayI = 0; SPRAY.p.fill(-999);
+
+// ---------- people and equipment models ----------
+function human(shirt, pants, skin, pose){
+  const g = new THREE.Group(), M = c => new THREE.MeshStandardMaterial({color:c, roughness:0.95});
+  const add = (par, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); m.castShadow = m.receiveShadow = true; par.add(m); return m; };
+  const hip = new THREE.Group(); g.add(hip); const up = new THREE.Group(); hip.add(up);
+  const sm = M(shirt), pm = M(pants), km = M(skin), hm = M(0x1c1612);
+  add(up, new THREE.CapsuleGeometry(0.16, 0.36, 4, 10), sm, 0, 0.32, 0).scale.z = 0.72;
+  add(up, new THREE.CylinderGeometry(0.05, 0.055, 0.1, 8), km, 0, 0.62, 0);
+  const head = add(up, new THREE.SphereGeometry(0.11, 14, 12), km, 0, 0.75, 0); head.scale.y = 1.15;
+  add(up, new THREE.SphereGeometry(0.115, 14, 10, 0, 6.3, 0, 1.5), hm, 0, 0.77, -0.012);
+  const limb = (par, x, y, r, len, mat, end) => { const p = new THREE.Group(); p.position.set(x, y, 0); par.add(p);
+    add(p, new THREE.CapsuleGeometry(r, len, 4, 8), mat, 0, -len/2 - r*0.5, 0); add(p, new THREE.SphereGeometry(r*1.15, 8, 6), end, 0, -len - r*1.6, 0.02); return p; };
+  const aL = limb(up, -0.215, 0.5, 0.048, 0.5, sm, km), aR = limb(up, 0.215, 0.5, 0.048, 0.5, sm, km);
+  const lL = limb(hip, -0.09, 0, 0.07, 0.72, pm, hm), lR = limb(hip, 0.09, 0, 0.07, 0.72, pm, hm);
+  hip.position.y = 0.13; lL.rotation.x = -1.48; lR.rotation.x = -1.4; lL.rotation.z = -0.12; lR.rotation.z = 0.16;
+  if (pose === 'stand'){ hip.position.y = 0.93; for (const l of [lL, lR, aL, aR]) l.rotation.set(0, 0, 0); }
+  else if (pose === 'lying'){ up.rotation.x = -1.47; aL.rotation.z = -0.5; aL.rotation.x = 0.1; } else { up.rotation.x = -0.28; head.position.z = 0.03; aL.rotation.x = -0.7; }
+  g.userData = {aR, aL, lL, lR, up, pose}; return g;
+}
+const LOOKS = [[0x7d8a96,0x3a3f4a,0xb07a52],[0xa8563c,0x2f3540,0x8d5a3b],[0xc9b56a,0x4a4038,0xc08a60],[0x4f7a66,0x2c2c30,0x9c6844],[0xb9b3aa,0x35435a,0xa87450],[0x8a4f7a,0x3c3a36,0xb98458]];
+const std = (c, r = 0.6, m = 0.2) => new THREE.MeshStandardMaterial({color:c, roughness:r, metalness:m});
+const TYPES = {water:['Water', 0xe9e9e4, 0xbfd8ff], foam:['Foam', 0xf0dc9a, 0xffffff], powder:['Dry powder', 0x2456c8, 0xf3e9c0], co2:['CO₂', 0x141414, 0xeaf6ff], wet:['Wet chemical', 0xf2c40f, 0xf6f0c8]};
+function extinguisherModel(type){ const g = new THREE.Group(), b = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.42, 14), std(0xc81e1e, 0.35, 0.3)); b.position.y = 0.21; g.add(b);
+  const t = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 8, 0, 6.3, 0, 1.57), std(0xc81e1e, 0.35, 0.3)); t.position.y = 0.42; g.add(t);
+  const v = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.09, 8), std(0x222222)); v.position.y = 0.52; g.add(v);
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.025, 0.035), std(0x222222)); h.position.set(0.05, 0.57, 0); g.add(h);
+  const n = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.022, 0.3, 8), std(0x151515)); n.position.set(-0.1, 0.38, 0); n.rotation.z = 0.35; g.add(n);
+  const l = new THREE.Mesh(new THREE.CylinderGeometry(0.077, 0.077, 0.13, 14), std(TYPES[type][1], 0.7, 0)); l.position.y = 0.24; g.add(l);
+  const pin = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.005, 5, 10), std(0xe8c020, 0.4, 0.6)); pin.position.set(0.0, 0.55, 0.035); g.add(pin); g.userData.pin = pin;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g; }
+function crowbarModel(){ const g = new THREE.Group(), m = std(0x2b3f66, 0.45, 0.7), s = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.85, 8), m); s.rotation.z = Math.PI/2; s.position.y = 0.02; g.add(s);
+  const c = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.014, 6, 10, 2.2), m); c.position.set(0.425, 0.08, 0); c.rotation.z = -1.57; g.add(c);
+  const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.012, 0.035), m); f.position.set(-0.46, 0.035, 0); f.rotation.z = -0.35; g.add(f);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g; }
+
+// ---------- state ----------
+const P = {pos:V3(0,0,0), vy:0, yaw:0, pitch:0, eye:1.6, bob:0, stepAcc:0};
+const CFG = {name:'', id:'', cond:'day', assist:'guided', sens:1, voice:true};
+const keys = {}; let collider, info, TRAIN = false, survivors = [], fires = [], doors = [], tools = [], crowd = [], carrying = null, rescued = 0, started = false, paused = true, finished = false, T = 0, hold = 0, shake = 0, nextQuake = 55, nextKnock = 3;
+const S = {inv:[], sel:-1, power:true, powerT:null, alarmT:null, upT:null, shocks:0, lastShock:-9, wrong:new Set(), heat:0, falls:0, runCarry:0, quakeMove:0, firesOut:0, doorsForced:0, floorTime:{Outside:0, Ground:0, First:0, Second:0}, lastEvent:0, moving:false, log:[], lesson:0, lessonT:0, lessonErr:0, lessonLog:[], startedAt:null};
+const amb = {g:new THREE.Group(), state:'parked', t:0, n:1, x:0};
+let alarms = [], board = null, wire = null, team = null, patient = null, view = null, lessons = [], marker = null, mupInv;
+const joy = {x:0, y:0}; let touchAct = false, actEdge = false, sprayHeld = false, pinEdge = false;
+const RC = new THREE.Raycaster(); RC.firstHitOnly = true; const dyn = [];
+const o = V3(0,0,0), tv = V3(0,0,0), fwd = V3(0,0,0), UP = V3(0,1,0), DOWN = V3(0,-1,0), RAD = 0.32;
+const DIRS = [...Array(8)].map((_,i) => V3(Math.cos(i*Math.PI/4), 0, Math.sin(i*Math.PI/4)));
+const cast = (from, dir, far) => { RC.set(from, dir); RC.far = far; let h = RC.intersectObject(collider, false)[0];
+  if (dyn.length){ const d = RC.intersectObjects(dyn, false)[0]; if (d && (!h || d.distance < h.distance)) h = d; } return h; };
+const solidMat = new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
+function blocker(geo, x, y, z){ const m = new THREE.Mesh(geo, solidMat); m.position.set(x, y, z); m.updateMatrixWorld(); dyn.push(m); return m; }
+const unblock = m => { const i = dyn.indexOf(m); if (i >= 0) dyn.splice(i, 1); };
+const mmss = t => String(Math.floor(t/60)).padStart(2,'0') + ':' + String(Math.floor(t%60)).padStart(2,'0');
+const log = text => S.log.push([T, text]);
+
+// ---------- menu ----------
+try { const sv = JSON.parse(localStorage.getItem('g2sim') || '{}'); Object.assign(CFG, sv); } catch(e){}
+$('fName').value = CFG.name; $('fId').value = CFG.id; $('fCond').value = CFG.cond; $('fAssist').value = CFG.assist; $('fSens').value = CFG.sens; $('fVoice').checked = CFG.voice;
+function readMenu(){ CFG.name = $('fName').value.trim(); CFG.id = $('fId').value.trim(); CFG.cond = $('fCond').value; CFG.assist = $('fAssist').value; CFG.sens = +$('fSens').value; CFG.voice = $('fVoice').checked;
+  try { localStorage.setItem('g2sim', JSON.stringify(CFG)); } catch(e){} }
+$('mTrain').addEventListener('click', () => loadWorld('yard')); $('mDrill').addEventListener('click', () => loadWorld('drill'));
+$('menu').addEventListener('click', () => location.reload());
+const GUIDED = () => TRAIN || CFG.assist === 'guided';
+function conditions(){ if (CFG.cond !== 'dusk') return; const c = 0x4b4350; scene.background.setHex(c); scene.fog.color.setHex(c); scene.fog.density = 0.022; sun.intensity = 0.55; sun.color.setHex(0xff9a66); hemi.intensity = 0.2; renderer.toneMappingExposure = 0.95; dust.m.opacity = 0.25; }
+
+// ---------- load a world ----------
+const SOLID = /(Building_Frame|Building_Walls|Building_Stairs|Furniture|Site|Site_Props|Compound_Wall|Neighbour_Buildings|Rescue_Zone|Vehicles|Utilities|Rubble_Big)__/;
+function loadWorld(name){
+  readMenu(); $('mTrain').disabled = $('mDrill').disabled = true; $('loadMsg').textContent = 'Loading the ' + (name === 'yard' ? 'training yard' : 'collapse site') + '…';
+  Promise.all([fetch(name + '.json').then(r => r.json()), fetch(name + '-model.json').then(r => r.json()).then(j => { const b = atob(j.glb), u = new Uint8Array(b.length); for (let i=0;i<b.length;i++) u[i] = b.charCodeAt(i); return new GLTFLoader().parseAsync(u.buffer, ''); })])
+    .then(([data, gltf]) => build(data, gltf)).catch(e => { $('loadMsg').textContent = 'Could not load: ' + e.message + '. Reload the page to try again.'; });
+}
+function build(data, gltf){
+  info = data; TRAIN = info.mode === 'train'; scene.add(gltf.scene); gltf.scene.updateMatrixWorld(true); conditions();
+  mupInv = new THREE.Matrix4().set(...info.mupInv);
+  const tris = [], v = V3(0,0,0), maxA = renderer.capabilities.getMaxAnisotropy(), ambParts = [];
+  gltf.scene.traverse(m => {
+    if (!m.isMesh) return;
+    const name = m.name + '|' + (m.parent ? m.parent.name : ''), sky = /Atmosphere/.test(name);
+    m.castShadow = !sky && !/Wires|Site_Signs/.test(name); m.receiveShadow = !sky;
+    if (sky){ m.material.fog = false; m.material.toneMapped = false; m.renderOrder = -1; if (CFG.cond === 'dusk') m.material.emissiveIntensity = 0.3; }
+    for (const k of ['map','normalMap']) if (m.material[k]) m.material[k].anisotropy = maxA;
+    if (/Ambulance__/.test(name)) ambParts.push(m);
+    if (SOLID.test(name)){ const p = m.geometry.attributes.position, ix = m.geometry.index, n = ix ? ix.count : p.count;
+      for (let i=0;i<n;i++){ v.fromBufferAttribute(p, ix ? ix.getX(i) : i).applyMatrix4(m.matrixWorld); tris.push(v.x, v.y, v.z); } }
+  });
+  for (const [cx, yb, cz, s, H] of info.mounds){
+    const N = 12, R = s*2.4, f = (x, z) => yb - 0.03 + H*Math.exp(-(x*x+z*z)/(2*s*s));
+    for (let i=0;i<N;i++) for (let j=0;j<N;j++){
+      const x0 = -R + 2*R*i/N, x1 = -R + 2*R*(i+1)/N, z0 = -R + 2*R*j/N, z1 = -R + 2*R*(j+1)/N, q = [[x0,z0],[x1,z0],[x1,z1],[x0,z0],[x1,z1],[x0,z1]];
+      if (Math.max(...q.map(([x,z]) => f(x,z))) - yb < 0.02) continue;
+      for (const [x,z] of q) tris.push(cx+x, f(x,z), cz+z);
+    }
+  }
+  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(tris), 3)); cg.computeBoundsTree();
+  collider = new THREE.Mesh(cg, solidMat); collider.updateMatrixWorld();
+  if (info.amb){ scene.add(amb.g); ambParts.forEach(m => amb.g.attach(m));
+    amb.light = new THREE.PointLight(0xff2a1a, 0, 22, 1.6); amb.light.position.set(...info.beacon); amb.g.add(amb.light);
+    amb.block = blocker(new THREE.BoxGeometry(4.9, 2.5, 2.05), ...info.amb); amb.home = V3(...info.amb);
+    team = new THREE.Group(); const m1 = human(0xe8e8e2, 0x1f5a3a, 0xa87450, 'stand'), m2 = human(0xe8e8e2, 0x1f5a3a, 0x8d5a3b, 'stand'); m1.position.z = 1.1; m2.position.z = -1.1;
+    const st = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 2.0), std(0xd8d4c8, 0.8, 0)); st.position.y = 0.82; st.visible = false; team.add(m1, m2, st); team.userData = {m:[m1, m2], st};
+    team.home = V3(info.amb[0] + 3.7, 0.13, info.amb[2]); team.position.copy(team.home); team.rotation.y = Math.PI/2; scene.add(team); }
+  // casualties: the drill draws six from a larger set of possible places, so no two runs match
+  let spots = info.survivors.map((s, i) => i); if (!TRAIN){ for (let i=spots.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [spots[i], spots[j]] = [spots[j], spots[i]]; } spots = spots.slice(0, 6); }
+  spots.forEach((si, i) => { const s = info.survivors[si], g = human(...LOOKS[i % 6], s.pose); g.position.set(...s.p); g.rotation.y = s.yaw*Math.PI/180; scene.add(g);
+    survivors.push({g, p:V3(...s.p), where:s.where, state:'trapped', phase:i*1.7}); });
+  info.fires.forEach(f => fires.push(makeFire(f)));
+  info.doors.forEach(d => { const piv = new THREE.Group(); piv.position.set(d.p[0], d.p[1] - 1.03, d.p[2]); piv.rotation.z = d.tilt || 0;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.05, 0.05), new THREE.MeshStandardMaterial({color:0x6a4a2e, roughness:0.75})); m.position.y = 1.03; m.castShadow = m.receiveShadow = true; piv.add(m);
+    const k = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), std(0xb9a25a, 0.3, 0.9)); k.position.set(0.36, 1.0, 0.045); piv.add(k); scene.add(piv);
+    doors.push({piv, p:V3(...d.p), where:d.where, open:false, fall:0, dir:1, block:blocker(new THREE.BoxGeometry(1.0, 2.2, 0.14), ...d.p)}); });
+  info.tools.forEach(t => addTool(t.t, V3(...t.p), 1, t.respawn));
+  info.alarms.forEach(p => { const g = new THREE.Group(); g.position.set(...p); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.06), std(0xd01818, 0.5, 0.1)));
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.065), std(0xf2f2ee, 0.3, 0)); g.add(w); scene.add(g); alarms.push({p:V3(...p), g, w}); });
+  { const g = new THREE.Group(); g.position.set(...info.board); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.14), std(0x8d9296, 0.5, 0.6)));
+    const lev = new THREE.Group(); lev.position.set(0.12, 0.05, 0.08); const h = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.05), std(0xc81e1e, 0.4, 0.2)); h.position.y = 0.1; lev.add(h); g.add(lev);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({color:0xff3020})); led.position.set(-0.15, 0.25, 0.075); g.add(led);
+    for (let k=0;k<4;k++){ const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.03), std(0x222222)); m.position.set(-0.2 + k*0.09, -0.2, 0.08); g.add(m); }
+    scene.add(g); board = {p:V3(...info.board), lev, led}; }
+  if (info.wire){ const p = V3(...info.wire), cab = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.9, 5), std(0x111111)); cab.position.set(p.x, p.y + 2.05, p.z); cab.rotation.z = 0.12; scene.add(cab);
+    const light = new THREE.PointLight(0x9fd0ff, 0, 7, 1.5); light.position.set(p.x - 0.1, p.y + 1.1, p.z); scene.add(light);
+    const sp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), new THREE.MeshBasicMaterial({color:0xcfe8ff})); sp.position.copy(light.position); scene.add(sp); wire = {p, light, sp}; }
+  (info.crowd || []).forEach((p, i) => { const L = LOOKS[(i*5 + 2) % 6], g = human(L[0], L[1], L[2], 'stand'); g.position.set(...p); g.rotation.y = Math.PI + s2()*0.6; g.scale.setScalar(0.93 + Math.random()*0.12); scene.add(g); crowd.push(g); });
+  if (TRAIN) setupLessons();
+  P.pos.set(...info.spawn); P.yaw = info.yaw || 0;
+  $('bCount').hidden = TRAIN; $('mapBox').hidden = TRAIN; $('fcount').textContent = '0 / ' + fires.length; $('count').textContent = '0 / ' + survivors.length;
+  window.__g = {P, info, survivors, fires, doors, tools, keys, S, amb, select, CFG, get lessons(){ return lessons; }, get alarms(){ return alarms; }, get board(){ return board; }, sim:(n, dt) => { for (let i=0;i<n;i++){ move(dt); logic(dt, performance.now()); } }, get carrying(){ return carrying; }, get rescued(){ return rescued; }, evaluate, finish};
+  briefing();
+}
+function briefing(){
+  const chart = `<table><tr><th>Fire</th><th>Use</th><th>Never</th></tr><tr><td>Fuel, flammable liquid</td><td>Foam or dry powder</td><td>Water</td></tr><tr><td>Cooking oil</td><td>Wet chemical</td><td>Water</td></tr><tr><td>Live electrical</td><td>CO₂ or dry powder</td><td>Water, foam, wet chemical</td></tr><tr><td>Electrical, mains off</td><td>Water, foam or powder</td><td></td></tr></table><p>Bands: water white · foam cream · dry powder blue · CO₂ black · wet chemical yellow.</p>`;
+  const ctl = `<dl><dt>W A S D · mouse</dt><dd>Walk and look. Shift runs. Click the view to capture the mouse.</dd><dt>1 2 3 · Tab</dt><dd>Choose the item in your hands. You carry up to three.</dd><dt>E</dt><dd>Use what is in front of you: pick up, alarm, mains, door, casualty.</dd><dt>R, then Q or mouse</dt><dd>Pull the safety pin, then squeeze. Aim at the base of the flames.</dd><dt>F · P</dt><dd>Helmet torch · pause, end, or go back to the menu.</dd><dt>VR headset</dt><dd>Open this page in the headset's browser and choose Start in VR headset. Left stick moves, right stick turns, right trigger sprays, grip (or left trigger) uses, A pulls the pin, B changes item, X torch, Y leaves VR.</dd></dl>`;
+  if (TRAIN){ $('oTag').textContent = 'Module 1 · equipment training yard'; $('oTitle').textContent = 'Equipment training';
+    $('oBody').innerHTML = `<p>Eight short lessons, one station at a time. Follow the orange light column and the task list on the left. Mistakes are explained, not punished: fires stay lit until you use the right extinguisher, and the rack refills.</p>${ctl}${chart}`; }
+  else { $('oTag').textContent = 'Module 2 · rescue drill · ' + (GUIDED() ? 'guided' : 'assessment'); $('oTitle').textContent = 'Rescue drill';
+    $('oBody').innerHTML = `<p>Lakshmi Nivas, a three-storey RC frame building, has failed at the ground storey. Six casualties are inside or beside it; their locations change every run. Three different fires are burning, the mains is live and two doors are jammed.</p><p>Order of work: kit up at the equipment cache, raise the fire alarm, switch off the mains at the main board (ground floor rear wall), then search floor by floor. Lay each casualty on the green tarp for the stretcher team.</p>${ctl}${GUIDED() ? chart : ''}`; }
+  $('oBtns').hidden = false; $('go').textContent = TRAIN ? 'Start training' : 'Start the drill'; $('menu').hidden = false; $('goVR').hidden = false; vrNote();
+  renderer.setAnimationLoop(frame);
+}
+
+// ---------- equipment in hand ----------
+const cur = () => S.inv[S.sel];
+const itemName = it => it.kind === 'bar' ? 'crowbar' : TYPES[it.type][0] + ' extinguisher';
+function addTool(t, p, charge = 1, respawn = false){ const g = t === 'bar' ? crowbarModel() : extinguisherModel(t); g.position.copy(p); if (t === 'bar') g.rotation.y = 0.6; scene.add(g); tools.push({g, t, p:p.clone(), taken:false, charge, respawn}); }
+function refreshView(){ if (view && view.parent) view.parent.remove(view); view = null; const it = cur(); if (!it) return; const hand = xrOn && ctrlR;
+  if (it.kind === 'bar'){ view = crowbarModel(); if (hand){ view.position.set(0, 0, -0.3); view.rotation.set(0, 1.57, 0); } else { view.position.set(0.28, -0.3, -0.5); view.rotation.set(0.3, 1.2, 0.9); } }
+  else { view = extinguisherModel(it.type); view.userData.pin.visible = !it.pin; if (hand){ view.position.set(0, -0.32, 0.02); } else { view.scale.setScalar(0.55); view.position.set(0.36, -0.46, -0.62); view.rotation.y = -0.5; } }
+  (hand ? ctrlR : camera).add(view); }
+function select(i){ if (i >= 0 && i < S.inv.length && i !== S.sel){ S.sel = i; refreshView(); click(1000, 0.05); } }
+const cycle = () => { if (S.inv.length) select((S.sel + 1) % S.inv.length); };
+function take(tool){ const it = tool.t === 'bar' ? {kind:'bar'} : {kind:'ext', type:tool.t, charge:tool.charge, pin:tool.charge < 1};
+  if (S.inv.length >= 3){ const old = S.inv[S.sel]; addTool(old.kind === 'bar' ? 'bar' : old.type, tool.p.clone().add(V3(0.22, 0, 0.12)), old.kind === 'bar' ? 1 : old.charge); S.inv[S.sel] = it; }
+  else { S.inv.push(it); S.sel = S.inv.length - 1; }
+  tool.taken = true; tool.g.visible = false; refreshView(); click(1200, 0.2); log('Picked up ' + itemName(it));
+  if (tool.respawn) setTimeout(() => addTool(tool.t, tool.p, 1, true), 3500); }
+function pullPin(){ const it = cur(); if (it && it.kind === 'ext' && !it.pin){ it.pin = true; if (view) view.userData.pin.visible = false; click(2200, 0.3, 0, 0, 0.05); return true; } return false; }
+function effect(f, type){
+  if (f.cls === 'B') return type === 'water' ? {hazard:'flare'} : {rate:{foam:1, powder:1, co2:0.45, wet:0.3}[type]};
+  if (f.cls === 'F') return type === 'water' ? {hazard:'flare'} : {rate:type === 'wet' ? 1 : 0.1};
+  if (S.power) return (type === 'co2' || type === 'powder') ? {rate:1} : {hazard:'shock'};
+  return {rate:{water:1, foam:1, powder:1, co2:0.6, wet:0.6}[type]};
+}
+function shock(msg, key){ S.shocks++; S.lastShock = T; shake = Math.max(shake, 0.8); click(3200, 0.7, 0, 0, 0.3); click(120, 0.8, 0, 0, 0.3); $('zap').style.opacity = 0.9; setTimeout(() => $('zap').style.opacity = 0, 120); log('Electric shock'); say(msg, key, true); }
+
+// ---------- fire ----------
+const FLAME_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const FLAME_FS = `precision highp float; uniform float t; uniform float s; uniform float seed; varying vec2 vUv;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f); return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a*noise(p); p *= 2.03; a *= 0.5; } return v; }
+void main(){
+  float y = vUv.y; float n = fbm(vec2(vUv.x*3.0 + seed, y*2.6 - t*1.9)); float n2 = fbm(vec2(vUv.x*7.0 - seed, y*5.5 - t*3.3));
+  float x = (vUv.x - 0.5)*2.0 + (n - 0.5)*0.9*y;
+  float h = clamp(s, 0.0, 1.5)*(0.7 + 0.45*n);
+  float width = mix(0.9, 0.05, pow(clamp(y/max(h, 0.001), 0.0, 1.0), 1.25))*(0.6 + 0.65*n2);
+  float body = smoothstep(width, width*0.25, abs(x));
+  float top = smoothstep(h, h*0.3, y);
+  float f = body*top*(0.5 + 0.85*n2)*smoothstep(0.0, 0.05, y);
+  vec3 c = mix(vec3(0.85, 0.1, 0.01), vec3(1.0, 0.5, 0.06), smoothstep(0.12, 0.45, f));
+  c = mix(c, vec3(1.0, 0.86, 0.45), smoothstep(0.62, 1.0, f));
+  gl_FragColor = vec4(c*0.95, clamp(f*1.15, 0.0, 1.0)*0.9); }`;
+function makeFire(f){
+  const n = 70, fl = cloud(n, {size:0.14*f.size, vertexColors:true, blending:THREE.AdditiveBlending, opacity:0.95}), sm = cloud(34, {size:1.7*f.size, color:0x2a2622, opacity:0.2});
+  const pl = TRAIN ? null : cloud(26, {size:5, color:0x25211e, opacity:0.2}), plL = new Float32Array(26).map(() => Math.random());
+  const col = new Float32Array(n*3); fl.g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const life = new Float32Array(n).map(() => Math.random()), sl = new Float32Array(34).map(() => Math.random());
+  const light = new THREE.PointLight(0xff7a2a, 0, 11, 1.6); light.position.set(f.p[0], f.p[1] + 0.8, f.p[2]); scene.add(light);
+  const tongues = new THREE.Group(); tongues.position.set(f.p[0], f.p[1], f.p[2]); const W = 2.3*f.size, H = 2.7*f.size, fmats = [];
+  for (let k=0;k<4;k++){ const g = new THREE.PlaneGeometry(W*(k === 3 ? 0.6 : 1), H*(k === 3 ? 0.7 : 1)); g.translate(0, H*(k === 3 ? 0.35 : 0.5), 0);
+    const m = new THREE.ShaderMaterial({vertexShader:FLAME_VS, fragmentShader:FLAME_FS, uniforms:{t:{value:0}, s:{value:1}, seed:{value:k*7.3 + f.p[0]}}, transparent:true, depthWrite:false, side:THREE.DoubleSide, blending:THREE.AdditiveBlending});
+    const q = new THREE.Mesh(g, m); q.rotation.y = k*Math.PI/3 + 0.4; q.frustumCulled = false; tongues.add(q); fmats.push(m); }
+  scene.add(tongues);
+  const F = {p:V3(...f.p), size:f.size, where:f.where, cls:f.cls, text:f.text, s:1, fl, sm, light, block:blocker(new THREE.CylinderGeometry(0.95*f.size, 0.95*f.size, 2.4, 12), f.p[0], f.p[1] + 1.2, f.p[2])};
+  F.update = dt => {
+    const s = Math.max(0, F.s), r = 0.42*F.size, ft0 = performance.now()/1000;
+    for (let i=0;i<n;i++){ life[i] -= dt*(0.9 + (i%5)*0.12);
+      if (life[i] <= 0){ if (s <= 0){ fl.p[i*3+1] = -999; continue; } life[i] = 1; const a = Math.random()*6.28, q = Math.sqrt(Math.random())*r; fl.p[i*3] = F.p.x + Math.cos(a)*q; fl.p[i*3+1] = F.p.y + 0.05; fl.p[i*3+2] = F.p.z + Math.sin(a)*q; }
+      const k = life[i]; fl.p[i*3+1] += dt*(2.0 + (i%7)*0.45)*F.size*(0.5 + 0.5*s); fl.p[i*3] += Math.sin(ft0 + i*1.7)*dt*0.5; fl.p[i*3+2] += Math.cos(ft0*1.3 + i)*dt*0.5;
+      col[i*3] = Math.min(1, k*1.6); col[i*3+1] = k*k*0.85; col[i*3+2] = k*k*k*0.3; }
+    for (let i=0;i<34;i++){ sl[i] -= dt*0.28; if (sl[i] <= 0){ if (s <= 0.02){ sm.p[i*3+1] = -999; continue; } sl[i] = 1; sm.p[i*3] = F.p.x + s2()*r; sm.p[i*3+1] = F.p.y + 1.9*F.size; sm.p[i*3+2] = F.p.z + s2()*r; }
+      sm.p[i*3+1] += dt*0.9; sm.p[i*3] += dt*0.18; }
+    if (pl){ for (let i=0;i<26;i++){ plL[i] -= dt*0.07; if (plL[i] <= 0){ if (s <= 0.02){ pl.p[i*3+1] = -999; continue; } plL[i] = 1; pl.p[i*3] = F.p.x + s2()*2; pl.p[i*3+1] = F.p.y + 3.5; pl.p[i*3+2] = F.p.z + s2()*2; }
+        pl.p[i*3+1] += dt*1.5; pl.p[i*3] += dt*0.9; } pl.g.attributes.position.needsUpdate = true; }
+    fl.g.attributes.position.needsUpdate = fl.g.attributes.color.needsUpdate = sm.g.attributes.position.needsUpdate = true;
+    fl.m.size = 0.14*F.size; tongues.visible = s > 0; const ft = performance.now()/1000; for (const m of fmats){ m.uniforms.t.value = ft; m.uniforms.s.value = s; }
+    light.intensity = s > 0 ? s*F.size*(16 + Math.random()*9) : 0;
+    if (F.gain) F.gain.gain.value = s*(0.5 + Math.random()*0.5)*0.9;
+  };
+  return F;
+}
+
+// ---------- input ----------
+const touchMode = matchMedia('(pointer:coarse)').matches;
+if (touchMode){ $('touch').hidden = false; $('keys').hidden = true; $('bExit').hidden = true; }
+const typing = e => /INPUT|SELECT|TEXTAREA/.test(e.target.tagName);
+const lockMouse = () => { if (touchMode) return; try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch(e){} };
+addEventListener('keydown', e => { if (typing(e)) return; if (e.code === 'KeyE' && !keys.KeyE) actEdge = true; if (e.code === 'KeyR') pinEdge = true; keys[e.code] = true;
+  if (e.code === 'KeyF') toggleTorch(); if (/^Digit[123]$/.test(e.code)) select(+e.code[5] - 1); if (e.code === 'Tab'){ e.preventDefault(); cycle(); }
+  if (e.code === 'KeyP' && started && !finished && !paused) pause(); if (['Space','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault(); });
+addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; sprayHeld = false; });
+function toggleTorch(){ torch.visible = !torch.visible; click(900, 0.05); }
+let drag = false;
+canvas.addEventListener('mousedown', () => { drag = true; if (!paused){ if (document.pointerLockElement === canvas) sprayHeld = true; else lockMouse(); } });
+addEventListener('mouseup', () => { drag = false; sprayHeld = false; });
+addEventListener('mousemove', e => { if (paused) return; if (document.pointerLockElement === canvas || drag) look(e.movementX, e.movementY, 0.0023); });
+function look(dx, dy, k){ k *= CFG.sens; P.yaw -= dx*k; P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - dy*k)); }
+let moveId = null, lookId = null, mo = [0,0], lo = [0,0], wheelT = 0;
+addEventListener('wheel', e => { if (!paused && e.timeStamp - wheelT > 260){ wheelT = e.timeStamp; cycle(); } }, {passive:true});
+canvas.addEventListener('touchstart', e => { e.preventDefault(); for (const t of e.changedTouches){
+  if (t.clientX < innerWidth*0.45 && moveId === null){ moveId = t.identifier; mo = [t.clientX, t.clientY]; const s = $('stick'); s.hidden = false; s.style.left = (t.clientX-55)+'px'; s.style.top = (t.clientY-55)+'px'; }
+  else if (lookId === null){ lookId = t.identifier; lo = [t.clientX, t.clientY]; } } }, {passive:false});
+canvas.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches){
+  if (t.identifier === moveId){ let x = (t.clientX-mo[0])/50, y = (t.clientY-mo[1])/50; const l = Math.hypot(x,y); if (l > 1){ x/=l; y/=l; } joy.x = x; joy.y = y; $('stick').firstElementChild.style.transform = `translate(${x*33}px,${y*33}px)`; }
+  if (t.identifier === lookId){ look(t.clientX-lo[0], t.clientY-lo[1], 0.005); lo = [t.clientX, t.clientY]; } } }, {passive:false});
+const tEnd = e => { for (const t of e.changedTouches){ if (t.identifier === moveId){ moveId = null; joy.x = joy.y = 0; $('stick').hidden = true; $('stick').firstElementChild.style.transform = ''; } if (t.identifier === lookId) lookId = null; } };
+canvas.addEventListener('touchend', tEnd); canvas.addEventListener('touchcancel', tEnd);
+const holdBtn = (id, on, off) => { $(id).addEventListener('touchstart', e => { e.preventDefault(); on(); }, {passive:false}); $(id).addEventListener('touchend', off); $(id).addEventListener('touchcancel', off); };
+holdBtn('tAct', () => { touchAct = true; actEdge = true; }, () => touchAct = false);
+holdBtn('tSpray', () => sprayHeld = true, () => sprayHeld = false);
+$('tTorch').addEventListener('click', toggleTorch); $('tItem').addEventListener('click', cycle); $('tPin').addEventListener('click', () => pinEdge = true); $('tPause').addEventListener('click', () => { if (started && !finished && !paused) pause(); });
+
+// ---------- sound: synthesised, positioned in 3D around the listener ----------
+let AC, noiseBuf, rumbleGain, hissGain, siren, bell;
+function panner(pos){ const p = AC.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 2.5; p.rolloffFactor = 1.3; setPos(p, pos); p.connect(AC.destination); return p; }
+function setPos(p, v){ if (p.positionX){ p.positionX.value = v.x; p.positionY.value = v.y; p.positionZ.value = v.z; } else p.setPosition(v.x, v.y, v.z); }
+function noiseLoop(type, freq, q, dest){ const s = AC.createBufferSource(); s.buffer = noiseBuf; s.loop = true; const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; const g = AC.createGain(); g.gain.value = 0; s.connect(f).connect(g).connect(dest); s.start(0, Math.random()*1.5); return g; }
+function audio(){
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return; }
+  noiseBuf = AC.createBuffer(1, AC.sampleRate*2, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+  noiseLoop('lowpass', 420, 0.7, AC.destination).gain.value = 0.05; rumbleGain = noiseLoop('lowpass', 70, 0.7, AC.destination); hissGain = noiseLoop('highpass', 3200, 0.5, AC.destination);
+  for (const f of fires){ f.pan = panner(f.p); f.gain = noiseLoop('bandpass', 700, 0.4, f.pan); }
+  if (info.amb){ const pn = panner(amb.home), g = AC.createGain(); g.gain.value = 0; const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    const osc = AC.createOscillator(); osc.type = 'sawtooth'; osc.connect(lp).connect(g).connect(pn); osc.start(); siren = {pn, g, osc, eng:noiseLoop('lowpass', 140, 1, pn)}; }
+  const ap = panner(alarms[0].p); ap.refDistance = 6; bell = AC.createGain(); bell.gain.value = 0; const bo = AC.createOscillator(); bo.type = 'square'; bo.frequency.value = 2350; bo.connect(bell).connect(ap); bo.start();
+}
+function click(freq, vol, pan = 0, when = 0, dur = 0.09){
+  if (!AC) return; const s = AC.createBufferSource(); s.buffer = noiseBuf; const f = AC.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 1.2;
+  const g = AC.createGain(), t = AC.currentTime + when; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+  let out = g; if (AC.createStereoPanner){ const p = AC.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
+  s.connect(f).connect(g); out.connect(AC.destination); s.start(t, Math.random(), dur + 0.03);
+}
+function listen(){ if (!AC) return; const L = AC.listener, c = camera.getWorldPosition(o); camera.getWorldDirection(tv);
+  if (L.positionX){ L.positionX.value = c.x; L.positionY.value = c.y; L.positionZ.value = c.z; L.forwardX.value = tv.x; L.forwardY.value = tv.y; L.forwardZ.value = tv.z; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+  else { L.setPosition(c.x, c.y, c.z); L.setOrientation(tv.x, tv.y, tv.z, 0, 1, 0); } }
+
+// ---------- instructor on the radio: spoken where the browser can, always shown as text ----------
+const said = {}; let radioT = 0, voice = null;
+function say(text, key, urgent){
+  if (key){ if (said[key]) return; said[key] = 1; }
+  $('rText').textContent = text; $('radio').hidden = false; radioT = Math.max(4, text.length*0.075); click(2600, 0.06, 0, 0, 0.05); S.lastEvent = T;
+  if (!CFG.voice) return;
+  try { const ss = window.speechSynthesis; if (!ss) return; if (urgent) ss.cancel();
+    if (!voice){ const vs = ss.getVoices(); voice = vs.find(v => /en[-_]IN/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null; }
+    const u = new SpeechSynthesisUtterance(text.replace(/CO₂/g, 'C O 2')); if (voice) u.voice = voice; u.rate = 1.05; u.pitch = 0.9; ss.speak(u); } catch(e){}
+}
+
+// ---------- equipment lessons (training yard) ----------
+function setupLessons(){
+  const near = (k, r) => Math.hypot(P.pos.x - info.stations[k][0], P.pos.z - info.stations[k][1]) < r;
+  lessons = [
+    {t:'Walk to the fire alarm wall', at:'wall', say:'Welcome to the equipment yard. Walk to the red fire alarm on the wall, under the orange light. W A S D to move, mouse to look.', done:() => near('wall', 2.4)},
+    {t:'Raise the fire alarm', at:'wall', say:'This is a manual call point. Face it and press E to break the glass. On any fire, raise the alarm before anything else.', done:() => S.alarmT !== null},
+    {t:'Fuel fire: foam or dry powder', at:'bay1', say:'Bay 1 is burning fuel. Take the foam or the dry powder extinguisher from the rack. Pull the pin with R, aim at the base of the flames, and hold Q to squeeze. Never use water on fuel.', done:() => fires[0].s <= 0},
+    {t:'Cooking oil fire: wet chemical', at:'bay2', say:'Bay 2 is burning cooking oil. Only the wet chemical extinguisher, yellow band, will hold it. Water makes burning oil erupt.', done:() => fires[1].s <= 0},
+    {t:'Live electrical fire: CO₂ or dry powder', at:'bay3', say:'Bay 3 is a live electrical panel. Use CO₂ or dry powder. Water and foam conduct electricity and will shock you.', done:() => fires[2].s <= 0},
+    {t:'Switch off the mains', at:'wall', say:'Now isolate the supply. Go to the main board and hold E on the red handle. Once the mains is off, electrical equipment is safe to approach.', done:() => !S.power},
+    {t:'Force the jammed door with the crowbar', at:'door', say:'The door of the small room is jammed. Take the crowbar from the rack, choose it with the number keys, and hold E at the door to lever it open.', done:() => doors[0].open},
+    {t:'Lift the casualty and carry to the mat', at:'mat', say:'There is a casualty inside. Hold E to lift, walk to the green mat, do not run, and press E to lay them down.', done:() => rescued >= 1}];
+  marker = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 9, 20, 1, true), new THREE.MeshBasicMaterial({color:0xff7a1a, transparent:true, opacity:0.22, side:THREE.DoubleSide, depthWrite:false, fog:false})); scene.add(marker);
+}
+function lessonTick(dt){
+  const L = lessons[S.lesson]; if (!L){ marker.visible = false; return; }
+  const st = info.stations[L.at]; marker.position.set(st[0], 4.5, st[1]); marker.material.opacity = 0.16 + 0.08*Math.sin(T*3);
+  if (S.lessonT === 0) say(L.say, 'lesson' + S.lesson); S.lessonT += dt;
+  if (T - S.lastEvent > 40) say(L.say, null);
+  if (L.done()){ const err = S.wrong.size + S.shocks - S.lessonErr; S.lessonLog.push({t:L.t, time:S.lessonT, err}); S.lessonErr += err; log('Lesson complete: ' + L.t); click(1400, 0.3); click(1900, 0.3, 0, 0.12);
+    S.lesson++; S.lessonT = 0; flash(S.lesson < lessons.length ? 'LESSON ' + S.lesson + ' COMPLETE' : 'TRAINING COMPLETE');
+    if (S.lesson >= lessons.length){ say('That completes equipment training. You are cleared for the rescue drill. Stand by for your report.', null, true); setTimeout(() => finish(false), 5000); } }
+}
+function tasks(){
+  let h;
+  if (TRAIN) h = lessons.map((L, i) => `<i class="${i < S.lesson ? 'done' : i === S.lesson ? 'on' : ''}">${i < S.lesson ? '✓' : i === S.lesson ? '▸' : '·'} ${L.t}</i>`).join('');
+  else { const row = (ok, t) => `<i class="${ok ? 'done' : 'on'}">${ok ? '✓' : '▸'} ${t}</i>`;
+    h = row(S.inv.length > 0, 'Kit up at the equipment cache') + row(S.alarmT !== null, 'Raise the fire alarm') + row(!S.power, 'Switch off the mains') + row(S.firesOut === fires.length, `Control the fires ${S.firesOut}/${fires.length}`) + row(rescued === survivors.length, `Casualties to the green tarp ${rescued}/${survivors.length}`); }
+  if (h !== tasks.h){ tasks.h = h; $('taskList').innerHTML = h; $('tasksLbl').textContent = TRAIN ? `Lesson ${Math.min(S.lesson + 1, lessons.length)} of ${lessons.length}` : 'Order of work'; }
+}
+
+// ---------- where is the rescuer ----------
+const ROOMS = [['Stair hall','Bedroom 1'],['Lobby','Living room'],['Kitchen','Bedroom 2']], FLOORS = ['Ground','First','Second'];
+const loc = {fl:-1, x:0, z:0, inside:false, zone:'Outside', text:'Road'};
+function locate(){
+  if (TRAIN){ let best = '', bd = 1e9; const nm = {wall:'Alarm and main board', rack:'Equipment rack', bay1:'Bay 1 · fuel', bay2:'Bay 2 · cooking oil', bay3:'Bay 3 · electrical', door:'Forced-entry room', mat:'Casualty point'};
+    for (const k in info.stations){ const d = Math.hypot(P.pos.x - info.stations[k][0], P.pos.z - info.stations[k][1]); if (d < bd){ bd = d; best = nm[k]; } } loc.text = bd < 4.5 ? best : 'Training yard'; loc.zone = 'Outside'; loc.inside = false; loc.fl = -1; return; }
+  const ox = P.pos.x + 6, oz = P.pos.z + 4.5; tv.set(ox, P.pos.y, oz).applyMatrix4(mupInv);
+  const [L1, L2] = info.L; let fl = 0, x = ox, z = oz, ly = P.pos.y - 0.6;
+  if (tv.y > L2 - 0.7){ fl = 2; x = tv.x; z = tv.z; ly = tv.y - L2; } else if (tv.y > L1 - 0.7){ fl = 1; x = tv.x; z = tv.z; ly = tv.y - L1; }
+  const inside = x > -0.3 && x < 12.3 && z > -0.3 && z < (fl ? 10.5 : 9.3) && (fl > 0 || P.pos.y > 0.3);
+  loc.x = x; loc.z = z; loc.inside = inside; loc.fl = inside ? fl : -1; loc.zone = inside ? FLOORS[fl] : 'Outside';
+  if (!inside) loc.text = oz > 15.5 ? 'Road' : oz > 9 ? 'Front yard' : oz < 0 ? 'Rear yard' : ox < 0 ? 'West side yard' : 'East side yard';
+  else if (ly > 0.45 && x < 2.6 && z < 4.5) loc.text = 'Stairs up from ' + FLOORS[fl].toLowerCase() + ' floor';
+  else if (ly < -0.25) loc.text = 'Stairs up to ' + FLOORS[fl].toLowerCase() + ' floor';
+  else if (fl === 0) loc.text = 'Ground floor · open storey';
+  else loc.text = FLOORS[fl] + ' floor · ' + (z > 9.2 ? 'Balcony' : ROOMS[Math.max(0, Math.min(2, Math.floor(x/4)))][z < 4.5 ? 0 : 1]);
+}
+const mc = $('map').getContext('2d'); let mapT = 0;
+function drawMap(){
+  const s = 24, ox = 32, oy = 30, X = x => ox + x*s, Z = z => oy + z*s, fl = loc.fl < 0 ? 0 : loc.fl;
+  const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim(), fg = css('--fg'), dim = css('--dim'), hi = css('--hi'), bad = css('--bad'), ok = css('--ok');
+  mc.clearRect(0, 0, 352, 276); mc.lineWidth = 3; mc.strokeStyle = fg; mc.strokeRect(X(0), Z(0), 12*s, 9*s);
+  mc.lineWidth = 2; mc.strokeStyle = dim; mc.fillStyle = dim; const line = (a, b, c, d) => { mc.beginPath(); mc.moveTo(X(a), Z(b)); mc.lineTo(X(c), Z(d)); mc.stroke(); };
+  for (let k=0;k<7;k++) line(0.3, 0.9 + k*0.5, 2.3, 0.9 + k*0.5);
+  if (fl > 0){ line(0, 4.5, 2.5, 4.5); line(3.5, 4.5, 5.5, 4.5); line(6.5, 4.5, 8.9, 4.5); line(9.9, 4.5, 12, 4.5); line(4, 4.5, 4, 9); line(8, 0, 8, 1.45); line(8, 2.45, 8, 5.75); line(8, 6.75, 8, 9); }
+  else for (const x of [0,4,8,12]) for (const z of [0,4.5,9]) mc.fillRect(X(x)-4, Z(z)-4, 8, 8);
+  const [L1, L2] = info.L, onFloor = y => fl === (y > L2 - 1.4 ? 2 : y > L1 - 1.4 ? 1 : 0), local = p => { tv.set(p.x + 6, p.y, p.z + 4.5); if (fl > 0) tv.applyMatrix4(mupInv); return tv; };
+  for (const d of doors) if (!d.open && onFloor(d.p.y - 1)){ const l = local(d.p); mc.strokeStyle = bad; mc.lineWidth = 5; mc.beginPath(); mc.moveTo(X(l.x - 0.5), Z(l.z)); mc.lineTo(X(l.x + 0.5), Z(l.z)); mc.stroke(); }
+  if (GUIDED()){
+    for (const f of fires) if (f.s > 0 && onFloor(f.p.y)){ const l = local(f.p); mc.fillStyle = hi; mc.beginPath(); mc.arc(X(l.x), Z(l.z), 7 + 2*Math.sin(T*8), 0, 6.3); mc.fill(); }
+    for (const a of alarms) if (S.alarmT === null && onFloor(a.p.y - 1.3)){ const l = local(a.p); mc.strokeStyle = bad; mc.lineWidth = 3; mc.strokeRect(X(l.x) - 5, Z(l.z) - 1, 10, 10); }
+    if (S.power && fl === 0){ const l = local(board.p); mc.fillStyle = css('--warn'); mc.fillRect(X(l.x) - 6, Z(l.z) - 1, 12, 10); }
+    for (const t of tools) if (!t.taken && onFloor(t.p.y)){ const l = local(t.p); mc.fillStyle = ok; mc.fillRect(X(l.x) - 4, Z(l.z) - 4, 8, 8); } }
+  const px = Math.max(-1, Math.min(13, loc.x)), pz = Math.max(-1, Math.min(10, loc.z)), a = Math.atan2(-Math.sin(P.yaw), Math.cos(P.yaw));
+  mc.save(); mc.translate(X(px), Z(pz)); mc.rotate(a); mc.fillStyle = fg; mc.beginPath(); mc.moveTo(0, -11); mc.lineTo(8, 9); mc.lineTo(0, 4); mc.lineTo(-8, 9); mc.closePath(); mc.fill(); mc.restore();
+  mc.fillStyle = dim; mc.font = '18px ' + css('--data'); mc.fillText('ROAD SIDE', X(4.1), Z(9) + 22);
+  $('mapLbl').textContent = 'Floor plan · ' + (loc.fl < 0 ? 'outside, ground level' : FLOORS[fl].toLowerCase() + ' floor');
+}
+
+// ---------- VR headset (WebXR) ----------
+let xrFloor = 0, xrOn = false, xrSession = null, ctrlR = null, vrOK = false, vrHud = null, vrCtx = null, vrT = 0, turnLatch = false, moveYaw = 0; const btnPrev = {};
+const vrNote = () => { const m = $('vrMsg'); if (m) m.textContent = vrOK ? 'VR headset detected. Choose a module, then press Start in VR headset.' : 'VR headset: not detected by this browser yet. Open this same link in the headset\'s own browser, or start Quest Link from inside the headset and press the VR button on the next screen.'; $('goVR').textContent = vrOK ? 'Start in VR headset' : 'Start in VR headset (check)'; };
+const vrCheck = () => (navigator.xr && navigator.xr.isSessionSupported ? navigator.xr.isSessionSupported('immersive-vr') : Promise.resolve(false)).then(ok => { vrOK = !!ok; vrNote(); return vrOK; }, () => { vrOK = false; vrNote(); return false; });
+if (navigator.xr && navigator.xr.addEventListener) navigator.xr.addEventListener('devicechange', vrCheck);
+const VRHELP = 'This browser cannot see a VR headset yet. EASIEST: unplug the Quest, put it on, open its own Browser app and type this page\'s address there. OR through the PC: open the Meta Quest Link app on the PC, then inside the headset choose Quick Settings > Quest Link > Launch, wait for the grey Link home, and press this button again (Chrome or Edge).';
+vrCheck();
+$('bVR').addEventListener('click', () => { if (xrOn) return; vrCheck().then(ok => { if (!ok){ pause(); const m = document.createElement('p'); m.style.color = 'var(--warn)'; m.textContent = VRHELP; $('oBody').appendChild(m); return; } enterVR().catch(e => flash('VR DID NOT START · CONNECT THE HEADSET AND START ITS PC APP, OR OPEN THIS LINK IN THE HEADSET BROWSER', 6000)); }); });
+$('bExit').addEventListener('click', () => { if (started && !finished && !paused) pause(); else if (finished) location.reload(); });
+let wasLocked = false;
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement === canvas) wasLocked = true; else if (wasLocked){ wasLocked = false; if (started && !finished && !paused && !xrOn) pause(); } });
+function enterVR(){
+  return navigator.xr.requestSession('immersive-vr', {optionalFeatures:['local-floor']}).then(sess => {
+    return sess.requestReferenceSpace('local-floor').then(() => 'local-floor', () => 'local').then(space => {
+    xrFloor = space === 'local' ? 1.6 : 0; renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType(space);
+    return renderer.xr.setSession(sess); }).then(() => {
+      xrSession = sess; xrOn = true; torch.castShadow = false; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
+      for (let i=0;i<2;i++){ const c = renderer.xr.getController(i); rig.add(c);
+        if (!c.userData.bound){ c.userData.bound = true; const ray = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.5), new THREE.MeshBasicMaterial({color:0xff7a1a})); ray.position.z = -0.27; c.add(ray);
+          c.addEventListener('connected', e => { if (e.data.handedness === 'right'){ ctrlR = c; refreshView(); } }); } }
+      if (!vrHud){ const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; vrCtx = cv.getContext('2d');
+        vrHud = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.5), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv), transparent:true, depthTest:false, fog:false, toneMapped:false}));
+        vrHud.position.set(0, -0.42, -1.25); vrHud.rotation.x = -0.35; vrHud.renderOrder = 999; camera.add(vrHud); }
+      vrHud.visible = true; refreshView();
+      sess.addEventListener('end', () => { xrOn = false; xrSession = null; ctrlR = null; renderer.xr.enabled = false; renderer.shadowMap.autoUpdate = true; torch.castShadow = true; if (vrHud) vrHud.visible = false;
+        joy.x = joy.y = 0; sprayHeld = false; touchAct = false; resize(); refreshView(); if (!finished && !paused) pause(); });
+    });
+  });
+}
+function pollXR(){
+  let mx = 0, my = 0, spray = false, act = false;
+  const edge = (k, v) => { const was = btnPrev[k]; btnPrev[k] = v; return v && !was; };
+  for (const src of xrSession.inputSources){ const gp = src.gamepad; if (!gp) continue; const ax = gp.axes, b = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const sx = ax.length >= 4 ? ax[2] : (ax[0] || 0), sy = ax.length >= 4 ? ax[3] : (ax[1] || 0);
+    if (src.handedness === 'left'){ if (Math.abs(sx) > 0.15) mx = sx; if (Math.abs(sy) > 0.15) my = sy; if (b(0)) act = true; if (edge('lx', b(4))) toggleTorch(); if (edge('ly', b(5))){ xrSession.end(); return; } }
+    else { if (Math.abs(sx) > 0.6){ if (!turnLatch){ turnLatch = true; P.yaw -= Math.sign(sx)*Math.PI/6; } } else turnLatch = false;
+      spray = b(0); if (b(1)) act = true; if (edge('ra', b(4))) pinEdge = true; if (edge('rb', b(5))) cycle(); } }
+  joy.x = mx; joy.y = my; sprayHeld = spray; if (act && !touchAct) actEdge = true; touchAct = act;
+}
+function drawVrHud(){
+  const c = vrCtx, W = 1024; c.clearRect(0, 0, W, 512); c.fillStyle = 'rgba(20,17,14,0.74)'; c.fillRect(0, 0, W, 512);
+  c.fillStyle = '#f3ead9'; c.font = 'bold 34px Arial';
+  c.fillText(`${mmss(T)}   ${TRAIN ? '' : 'Rescued ' + rescued + '/' + survivors.length + '   '}Fires ${S.firesOut}/${fires.length}   Alarm ${S.alarmT === null ? 'silent' : 'ON'}   Mains ${S.power ? 'LIVE' : 'OFF'}`, 24, 46);
+  const it = cur(); c.font = '27px Arial'; c.fillStyle = '#b9ab94';
+  c.fillText(loc.text + '   |   ' + (it ? (it.kind === 'bar' ? 'Crowbar' : TYPES[it.type][0] + ' ' + Math.round(it.charge*100) + '%' + (it.pin ? '' : ', pin in')) : 'Hands empty') + (carrying ? '   |   Carrying casualty' : ''), 24, 88);
+  let task = TRAIN ? (lessons[S.lesson] ? lessons[S.lesson].t : 'Training complete') : S.inv.length === 0 ? 'Kit up at the equipment cache' : S.alarmT === null ? 'Raise the fire alarm' : S.power ? 'Switch off the mains' : rescued < survivors.length ? 'Find casualties, carry them to the green tarp' : 'All casualties out';
+  if (!TRAIN && !$('locator').hidden) task += '   (' + $('locText').innerText.replace(/\n/g, ' ') + ')';
+  c.fillStyle = '#58d08b'; c.fillText('Task: ' + task, 24, 130);
+  const wrap = (text, y, max) => { const words = text.split(' '); let line = '', n = 0; for (const w of words){ if (c.measureText(line + w).width > W - 48){ c.fillText(line, 24, y); y += 38; line = ''; if (++n >= max) return; } line += w + ' '; } c.fillText(line, 24, y); };
+  if (!$('radio').hidden){ c.fillStyle = '#ff7a1a'; c.font = 'bold 24px Arial'; c.fillText('INSTRUCTOR', 24, 178); c.fillStyle = '#f3ead9'; c.font = '30px Arial'; wrap($('rText').textContent, 216, 5); }
+  if (!$('prompt').hidden){ c.fillStyle = '#ff7a1a'; c.fillRect(0, 430, W, 82); c.fillStyle = '#1a0f05'; c.font = 'bold 32px Arial'; c.fillText($('pText').textContent, 24, 480); c.fillRect(0, 502, W*parseFloat($('pBar').style.width || '0')/100, 10); }
+  else if (T < 45){ c.fillStyle = '#b9ab94'; c.font = '24px Arial'; c.fillText('L stick move · R stick turn · R trigger spray · grip use · A pin · B item · X torch · Y exit', 24, 490); }
+  vrHud.material.map.needsUpdate = true;
+}
+$('goVR').addEventListener('click', () => { if (!AC) audio(); const start = () => { $('goVR').textContent = 'Starting VR…'; enterVR().then(() => $('go').click()).catch(e => vrFail(e)); };
+  if (vrOK) start(); else vrCheck().then(ok => { if (ok) vrNote(); else { let m = $('vrErr'); if (!m){ m = document.createElement('p'); m.id = 'vrErr'; m.style.color = 'var(--warn)'; $('oBody').appendChild(m); } m.textContent = VRHELP; } }); });
+function vrFail(e){ $('goVR').textContent = 'Try VR again'; let m = $('vrErr'); if (!m){ m = document.createElement('p'); m.id = 'vrErr'; m.style.color = 'var(--warn)'; $('oBody').appendChild(m); }
+  m.textContent = 'VR did not start (' + (e && e.name ? e.name : 'no headset answered') + '). This device has VR software but no headset responded. Tethered headset: connect it, start its PC app (Meta Quest Link, SteamVR or Mixed Reality Portal), put it on, then press Try VR again. Standalone headset: open this link in the headset\'s own browser instead.'; }
+(() => { });
+
+// ---------- flow ----------
+$('go').addEventListener('click', () => {
+  $('overlay').hidden = true; $('hudAll').hidden = false; paused = false; if (!AC) audio(); else if (AC.state === 'suspended') AC.resume();
+  if (!started){ started = true; S.startedAt = new Date();
+    if (!TRAIN) say('Control to trainee. Lakshmi Nivas, three storeys, ground storey has failed. Six casualties, three fires, mains still live. Choose your equipment at the cache beside the green tarp. You carry three items, so choose wisely. Then raise the fire alarm and switch off the mains at the main board, ground floor rear wall.', 'start'); }
+  lockMouse();
+});
+$('end').addEventListener('click', () => finish(true));
+function pause(){ paused = true; if (document.exitPointerLock) document.exitPointerLock(); try { speechSynthesis.cancel(); } catch(e){}
+  $('oTag').textContent = 'Paused'; $('oTitle').textContent = 'Paused · exit options'; $('oBody').innerHTML = '<p>The clock is stopped. Choose one:</p><ul><li><b>Resume</b> to carry on.</li><li><b>End and get report</b> to stop here and see your trainee report.</li><li><b>Main menu</b> to exit this module (this run is discarded).</li></ul>';
+  $('go').textContent = 'Resume'; $('end').hidden = false; $('menu').hidden = false; $('overlay').hidden = false; }
+function flash(text, ms = 2600){ const f = $('flash'); f.textContent = text; f.style.opacity = 1; clearTimeout(flash.t); flash.t = setTimeout(() => f.style.opacity = 0, ms); }
+function relPan(target){ const a = Math.atan2(-(target.x-P.pos.x), -(target.z-P.pos.z)) - P.yaw; return {a, pan: Math.max(-1, Math.min(1, -Math.sin(a)))}; }
+
+function move(dt){
+  let fx = (keys.KeyD||keys.ArrowRight?1:0) - (keys.KeyA||keys.ArrowLeft?1:0) + joy.x, fz = (keys.KeyW||keys.ArrowUp?1:0) - (keys.KeyS||keys.ArrowDown?1:0) - joy.y;
+  const l = Math.hypot(fx, fz); if (l > 1){ fx /= l; fz /= l; }
+  const running = keys.ShiftLeft || keys.ShiftRight; let sp = running ? 5.2 : 3.1; if (carrying) sp *= 0.62; if (P.eye < 1.35) sp *= 0.55;
+  const my = xrOn ? moveYaw : P.yaw, s = Math.sin(my), c = Math.cos(my), px = P.pos.x, pz = P.pos.z;
+  P.pos.x += (-s*fz + c*fx) * sp * dt; P.pos.z += (-c*fz - s*fx) * sp * dt;
+  for (const h of [0.6, Math.max(0.68, P.eye - 0.15)]) for (const d of DIRS){
+    o.set(P.pos.x, P.pos.y + h, P.pos.z); const hit = cast(o, d, RAD);
+    if (hit){ const push = RAD - hit.distance; P.pos.x -= d.x*push; P.pos.z -= d.z*push; }
+  }
+  o.set(P.pos.x, P.pos.y + 0.5, P.pos.z); const up = cast(o, UP, 1.6), clear = up ? 0.5 + up.distance : 9;
+  if (clear < 0.95){ P.pos.x = px; P.pos.z = pz; }
+  else P.eye += (Math.max(0.78, Math.min(1.6, clear - 0.22)) - P.eye) * Math.min(1, dt*8);
+  o.set(P.pos.x, P.pos.y + 0.55, P.pos.z); let g = cast(o, DOWN, 60);
+  if (!g || (g.point.y > P.pos.y + 0.04 && Math.abs(g.face.normal.y) < 0.7)){ P.pos.x = px; P.pos.z = pz; o.set(px, P.pos.y + 0.55, pz); g = cast(o, DOWN, 60); }
+  if (g){ const gy = g.point.y;
+    if (gy >= P.pos.y - 0.3 && P.vy <= 0){ P.pos.y += (gy - P.pos.y) * Math.min(1, dt*16); P.vy = 0; }
+    else { P.vy -= 22*dt; P.pos.y += P.vy*dt; if (P.pos.y < gy){ P.pos.y = gy; if (P.vy < -6){ shake = Math.max(shake, 0.35); if (!finished){ S.falls++; log('Hard fall at ' + loc.text); say('That was a hard fall. Watch the slab edges and the stair well.', null); } } P.vy = 0; } }
+  }
+  const moved = Math.hypot(P.pos.x - px, P.pos.z - pz); S.moving = moved > 0.002;
+  if (S.moving && !finished){ if (carrying && running) S.runCarry += dt; if (shake > 1.2) S.quakeMove += dt; }
+  if (moved > 0.001 && P.vy === 0){ P.stepAcc += moved; P.bob += moved * 4.2; if (P.stepAcc > 0.78){ P.stepAcc = 0; click(160 + Math.random()*80, carrying ? 0.16 : 0.1); } }
+}
+
+function logic(dt, now){
+  T += dt; locate(); if (!finished) S.floorTime[loc.zone] += dt;
+  if (loc.fl >= 1 && S.upT === null){ S.upT = T; if (S.power || S.alarmT === null) say('You have gone upstairs' + (S.alarmT === null ? ' without raising the alarm' : '') + (S.power ? (S.alarmT === null ? ' and' : '') + ' with the mains still live' : '') + '. The call point and main board are on the ground floor rear wall.', 'upearly'); }
+  const eyeP = V3(P.pos.x, P.pos.y + 1.2, P.pos.z), camP = V3(P.pos.x, P.pos.y + P.eye, P.pos.z), act = keys.KeyE || touchAct, it = cur(); let prompt = '', bar = 0, holding = false;
+  fwd.set(-Math.sin(P.yaw)*Math.cos(P.pitch), Math.sin(P.pitch), -Math.cos(P.yaw)*Math.cos(P.pitch));
+  if (xrOn && ctrlR){ camP.set(0, 0.22, 0).applyMatrix4(ctrlR.matrixWorld); fwd.set(0, 0, -1).transformDirection(ctrlR.matrixWorld); }
+  const useKey = xrOn ? 'grip' : touchMode ? 'Use' : 'E', press = xrOn ? 'Press grip' : (touchMode ? 'Tap Use' : 'Press E'), holdK = `Hold ${useKey}`;
+  let near = null, nd = 1e9; for (const s of survivors) if (s.state === 'trapped'){ const d = s.p.distanceTo(P.pos); if (d < nd){ nd = d; near = s; } }
+  let pick = null; const offer = (d, r, k, obj) => { if (d < r && (!pick || d < pick.d)) pick = {d, k, o:obj}; };
+  if (!carrying){
+    if (near) offer(nd - 0.35, 1.95, 'surv', near);
+    for (const d of doors) if (!d.open) offer(d.p.distanceTo(eyeP), 1.9, 'door', d);
+    for (const t of tools) if (!t.taken) offer(Math.hypot(t.p.x - P.pos.x, t.p.z - P.pos.z) + Math.max(0, Math.abs(t.p.y - P.pos.y) - 1), 1.7, 'tool', t);
+    if (S.alarmT === null) for (const a of alarms) offer(a.p.distanceTo(eyeP), 1.8, 'alarm', a);
+    if (S.power) offer(board.p.distanceTo(eyeP), 1.8, 'board', board);
+  }
+  const zone = V3(...info.zone), zd = Math.hypot(zone.x - P.pos.x, zone.z - P.pos.z);
+  if (carrying){
+    if (zd < 3.4){
+      if (info.amb && amb.state !== 'parked') prompt = 'Hold the casualty here. The next ambulance and stretcher team are arriving.';
+      else { prompt = press + (TRAIN ? ' to lay the casualty on the mat' : ' to lay the casualty on the tarp for the stretcher team');
+        if (actEdge){ patient = carrying; carrying = null; rescued++; patient.state = info.amb ? 'handed' : 'safe'; const g = patient.g, u = g.userData; g.visible = true; u.up.rotation.x = -1.47; u.aR.rotation.set(0.1, 0, 0.3); g.position.copy(zone); g.rotation.y = Math.PI/2;
+          click(600, 0.12); S.lastEvent = T; $('count').textContent = rescued + ' / ' + survivors.length; log(`Casualty ${rescued} laid at the casualty point (from ${patient.where})`);
+          if (info.amb){ amb.state = 'fetch'; amb.t = 0; flash('CASUALTY AT TRIAGE'); const left = survivors.length - rescued;
+            say(left ? `Casualty ${rescued} is at triage. The stretcher team is taking them to ambulance ${amb.n}. ${left} still inside.` : 'Last casualty is at triage. All six are out. Stand by for your report.', null); } else patient = null; } } }
+  } else if (pick){ const k = pick.k, ob = pick.o;
+    if (k === 'surv'){ prompt = `${holdK} to lift the casualty`; if (act){ holding = true; hold += dt; bar = hold/1.4; if (hold >= 1.4){ carrying = ob; ob.state = 'carried'; ob.g.visible = false; hold = 0; log('Casualty lifted in the ' + ob.where); flash(TRAIN ? 'CARRY TO THE GREEN MAT' : 'CARRY TO THE GREEN TARP'); say('Casualty lifted. Carry them to the green ' + (TRAIN ? 'mat' : 'tarp') + '. Walk, do not run.', null); } } }
+    else if (k === 'door'){ const bi = S.inv.findIndex(x => x.kind === 'bar'), di = doors.indexOf(ob);
+      if (bi < 0){ prompt = 'Door is jammed. You need a crowbar.'; say('That door is jammed. You need the crowbar from the equipment ' + (TRAIN ? 'rack.' : 'cache.'), 'needbar' + di); }
+      else if (bi !== S.sel) prompt = `Door is jammed. Choose the crowbar (${touchMode ? 'Item button' : 'key ' + (bi + 1)}).`;
+      else { prompt = `${holdK} to force the door with the crowbar`; if (!TRAIN) say('Jammed door. Set the crowbar at the latch and lever it open.', 'usebar' + di);
+        if (act){ holding = true; const h0 = hold; hold += dt; bar = hold/2.2; if (Math.floor(hold/0.5) > Math.floor(h0/0.5)){ click(300, 0.5, 0, 0, 0.16); click(1900, 0.2); shake = Math.max(shake, 0.25); }
+          if (view && !xrOn) view.rotation.z = 0.9 + Math.sin(hold*12.5)*0.35;
+          if (hold >= 2.2){ ob.open = true; ob.dir = Math.sign(ob.p.z - P.pos.z) || 1; unblock(ob.block); S.doorsForced++; hold = 0; click(180, 0.7, 0, 0, 0.4); log('Forced the door of the ' + ob.where); flash('DOOR FORCED'); say('Door is open. Check the room.', null); } } } }
+    else if (k === 'tool'){ const nm = ob.t === 'bar' ? 'crowbar' : `${TYPES[ob.t][0]} extinguisher` + (ob.charge < 0.99 ? ` (${Math.round(ob.charge*100)}%)` : '');
+      prompt = S.inv.length >= 3 ? `${press} to swap your ${itemName(it)} for the ${nm}` : `${press} to take the ${nm}`;
+      if (actEdge){ take(ob); if (S.inv.length === 3) say('Hands full. Picking up anything else swaps out the item in your hands.', 'full'); } }
+    else if (k === 'alarm'){ prompt = `${press} to break the glass and raise the fire alarm`;
+      if (actEdge){ S.alarmT = T; for (const a of alarms) a.w.visible = false; click(2800, 0.5, 0, 0, 0.2); log('Fire alarm raised'); flash('FIRE ALARM RAISED'); if (!TRAIN) say('Fire alarm is sounding. Good. Now make sure the mains is off.', null); } }
+    else if (k === 'board'){ prompt = `${holdK} to switch off the mains at the main board`;
+      if (act){ holding = true; hold += dt; bar = hold/1.2; if (hold >= 1.2){ S.power = false; S.powerT = T; hold = 0; board.lev.rotation.x = 2.2; board.led.material.color.setHex(0x203020); click(140, 0.8, 0, 0, 0.3); log('Mains isolated at the main board'); flash('MAINS ISOLATED'); say('Mains is off. Electrical hazards are now dead.', null); } } }
+  }
+  if (!holding) hold = 0; actEdge = false;
+  // ---- extinguisher in hand: pin, aim, squeeze
+  const ext = it && it.kind === 'ext' ? it : null, want = (keys.KeyQ || sprayHeld) && !holding;
+  if (pinEdge){ pinEdge = false; if (!pullPin() && ext && GUIDED()) prompt = prompt || 'Pin is already out'; }
+  const spraying = want && ext && ext.pin && ext.charge > 0 && !carrying;
+  if (want && !spraying) prompt = prompt || (carrying ? 'Your hands are full. Lay the casualty down first.' : !ext ? 'Choose an extinguisher first (keys 1 to 3)' : !ext.pin ? `Pull the safety pin first (${touchMode ? 'Pin button' : 'R'})` : 'This extinguisher is empty');
+  if (view){ view.visible = !carrying; if (ext && !xrOn){ view.rotation.x = spraying ? -0.9 : 0; view.position.y = spraying ? -0.33 : -0.46; } }
+  if (hissGain) hissGain.gain.value = spraying ? 0.16 : 0;
+  if (spraying){ ext.charge = Math.max(0, ext.charge - dt/10); if (ext.charge === 0) say('That extinguisher is empty. Choose another.', null); SPRAY.m.color.setHex(TYPES[ext.type][2]);
+    for (let k=0;k<4;k++){ const i = sprayI = (sprayI + 1) % SPRAY.n; SPRAY.p[i*3] = camP.x + fwd.x*0.5 + s2()*0.03; SPRAY.p[i*3+1] = camP.y - 0.22 + fwd.y*0.5; SPRAY.p[i*3+2] = camP.z + fwd.z*0.5 + s2()*0.03;
+      sprayV[i*3] = fwd.x*9 + s2()*1.1; sprayV[i*3+1] = fwd.y*9 + s2()*1.1; sprayV[i*3+2] = fwd.z*9 + s2()*1.1; sprayL[i] = 0.6; } }
+  for (let i=0;i<SPRAY.n;i++) if (sprayL[i] > 0){ sprayL[i] -= dt; for (let k=0;k<3;k++){ SPRAY.p[i*3+k] += sprayV[i*3+k]*dt; sprayV[i*3+k] *= 0.94; } if (sprayL[i] <= 0) SPRAY.p[i*3+1] = -999; }
+  SPRAY.g.attributes.position.needsUpdate = true;
+  // ---- fires: the agent has to match the fire
+  let hot = 0;
+  fires.forEach((f, fi) => { f.update(dt); if (f.s <= 0) return;
+    const d = f.p.distanceTo(P.pos);
+    if (!TRAIN && d < 7.5 && Math.abs(f.p.y - P.pos.y) < 2.5) say(GUIDED() ? `${f.text}. Choose the right extinguisher before you fight it.` : 'Fire ahead. Identify what is burning and choose your extinguisher.', 'fire' + fi);
+    if (d < 1.2 + f.size*0.75*Math.min(1.3, f.s)){ hot = 1; if (!finished) S.heat += dt; }
+    if (!spraying) return;
+    o.set(f.p.x, f.p.y + 0.35, f.p.z).sub(camP); const dist = o.length(); if (dist > 6) return;
+    if (o.normalize().dot(fwd) < 0.93){ o.set(f.p.x, f.p.y + 1.5*f.size, f.p.z).sub(camP).normalize(); if (o.dot(fwd) > 0.95 && GUIDED()) say('Aim lower. Hit the base of the flames, not the top.', 'aim' + fi + Math.floor(T/15)); return; }
+    const e = effect(f, ext.type), wk = fi + ':' + ext.type, bad = () => { if (!S.wrong.has(wk)){ S.wrong.add(wk); log(`Wrong agent: ${TYPES[ext.type][0]} on ${f.where}`); } };
+    if (e.hazard === 'flare'){ f.s = Math.min(1.5, f.s + dt*0.7); bad(); say(f.cls === 'F' ? 'Stop! Never put water on burning cooking oil. It needs the wet chemical extinguisher.' : 'Stop! Water spreads burning fuel. It needs foam or dry powder.', 'wrong' + wk, true); }
+    else if (e.hazard === 'shock'){ bad(); if (T - S.lastShock > 1.6) shock('Stop! That fire is live electrical. Your agent conducts. Use CO₂ or dry powder, or switch off the mains first.', 'wrong' + wk); }
+    else { if (e.rate < 0.2){ bad(); say('That agent will not hold a cooking oil fire. It needs the wet chemical extinguisher.', 'wrong' + wk, true); }
+      f.s -= dt*e.rate/(3.6*f.size);
+      if (f.s <= 0){ f.s = 0; unblock(f.block); S.firesOut++; $('fcount').textContent = S.firesOut + ' / ' + fires.length; log(`Fire out: ${f.where} (${TYPES[ext.type][0]})`); flash('FIRE OUT'); say(S.firesOut === fires.length ? 'Fire is out. That is all three fires controlled.' : 'Fire is out. Good choice.', null); } } });
+  $('heat').style.opacity = hot ? 0.75 : 0; if (hot) say('You are too close to the fire. Back away now.', 'heat' + Math.floor(T/8), true);
+  // ---- live cable
+  if (wire){ const d = wire.p.distanceTo(P.pos), lv = S.power; wire.light.intensity = lv && Math.random() < 0.18 ? 40 : 0; wire.sp.visible = lv && wire.light.intensity > 0;
+    if (lv && d < 8 && Math.random() < dt*2.5) click(4200, 0.25/(1 + d*0.3), 0, 0, 0.04);
+    if (lv && d < 5 && Math.abs(wire.p.y - P.pos.y) < 1.5) say('Live cable hanging in the lobby. Keep clear of it until the mains is off.', 'wirewarn');
+    if (lv && d < 1.0 && T - S.lastShock > 2 && !finished) shock('You touched a live cable. Switch off the mains at the main board on the ground floor.', 'wirehit' + Math.floor(T/10)); }
+  if (bell) bell.gain.value = S.alarmT !== null && !finished && Math.floor(now/260) % 2 ? (TRAIN ? 0.02 : 0.05) : 0;
+  for (const d of doors) if (d.open && d.fall < 1){ d.fall = Math.min(1, d.fall + dt*2.2); d.piv.rotation.x = d.dir * d.fall*d.fall * 1.5; }
+  // ---- stretcher team and ambulance rotation
+  if (info.amb){
+    const tm = team.userData, walk = (a, b, k, carry) => { team.position.lerpVectors(a, b, k); team.rotation.y = Math.atan2(b.x - a.x, b.z - a.z); const w = Math.sin(T*9)*0.5;
+      for (const m of tm.m){ const u = m.userData; u.lL.rotation.x = w; u.lR.rotation.x = -w; u.aL.rotation.x = carry ? -0.25 : -w*0.6; u.aR.rotation.x = carry ? -0.25 : w*0.6; } };
+    const still = () => { for (const m of tm.m){ const u = m.userData; u.lL.rotation.x = u.lR.rotation.x = u.aL.rotation.x = u.aR.rotation.x = 0; } };
+    amb.t += dt;
+    if (amb.state === 'fetch'){ const k = Math.min(1, amb.t/2.6); walk(team.home, zone, k, false); if (k >= 1){ amb.state = 'carry'; amb.t = 0; tm.st.visible = true; click(500, 0.2); } }
+    else if (amb.state === 'carry'){ const k = Math.min(1, amb.t/3.8); walk(zone, team.home, k, true); if (patient){ patient.g.position.set(team.position.x, team.position.y + 0.74, team.position.z); patient.g.rotation.y = team.rotation.y + Math.PI; }
+      if (k >= 1){ amb.state = 'loading'; amb.t = 0; still(); } }
+    else if (amb.state === 'loading'){ if (amb.t > 1.3){ if (patient){ patient.g.visible = false; patient.state = 'safe'; patient = null; } team.visible = false; tm.st.visible = false; amb.state = 'leaving'; amb.t = 0; click(200, 0.5, 0, 0, 0.25); log(`Ambulance ${amb.n} left with casualty ${rescued}`);
+        if (rescued === survivors.length) setTimeout(() => finish(false), 3800); else say(`Ambulance ${amb.n} is leaving for hospital. Ambulance ${amb.n + 1} is coming in.`, null); } }
+    else if (amb.state === 'leaving'){ amb.x = -0.5*1.6*amb.t*amb.t; if (amb.x < -46){ amb.state = 'arriving'; amb.t = 0; amb.n++; } }
+    else if (amb.state === 'arriving'){ const k = Math.min(1, amb.t/7); amb.x = -46*(1 - k)*(1 - k); if (k >= 1){ amb.state = 'parked'; amb.x = 0; team.visible = true; team.position.copy(team.home); team.rotation.y = Math.PI/2; still(); flash('AMBULANCE ' + amb.n + ' ON SCENE', 2000); } }
+    amb.g.position.x = amb.x; amb.block.position.x = amb.home.x + amb.x; amb.block.updateMatrixWorld();
+    const mv = amb.state === 'leaving' || amb.state === 'arriving';
+    amb.light.intensity = (Math.floor(now/(mv ? 120 : 260)) % (mv ? 2 : 4) === 0) ? 60 : 0;
+    if (siren){ tv.set(amb.home.x + amb.x, 1.5, amb.home.z); setPos(siren.pn, tv); siren.g.gain.value = mv ? 0.22 : 0; siren.eng.gain.value = mv ? 0.9 : 0.12; siren.osc.frequency.value = Math.floor(now/480) % 2 ? 960 : 720; }
+  }
+  for (let i=0;i<crowd.length;i++){ const u = crowd[i].userData; u.up.rotation.z = Math.sin(T*0.7 + i*2.1)*0.04; u.aR.rotation.x = i % 4 === 1 ? -2.4 + Math.sin(T*3 + i)*0.2 : 0; }
+  // ---- prompt, locator, HUD
+  $('prompt').hidden = !prompt; if (prompt){ $('pText').textContent = prompt; $('pBar').style.width = Math.min(100, bar*100) + '%'; }
+  const tgt = TRAIN ? null : carrying ? zone : near && near.p; $('locator').hidden = !tgt || finished;
+  if (tgt){ const {a} = relPan(tgt), d = Math.hypot(tgt.x - P.pos.x, tgt.z - P.pos.z), dy = tgt.y - P.pos.y; $('arrow').style.transform = `rotate(${-a}rad)`;
+    $('locText').innerHTML = `<span>${carrying ? 'Green tarp' : 'Life detector'}</span>${d.toFixed(0)} m${carrying ? '' : dy > 1.5 ? ' · above you' : dy < -1.5 ? ' · below you' : ' · this level'}`; }
+  $('where').textContent = loc.text;
+  const gear = S.inv.map((x, i) => `<i class="slot${i === S.sel ? ' on' : ''}">${i + 1} ${x.kind === 'bar' ? 'Crowbar' : TYPES[x.type][0] + ' ' + Math.round(x.charge*100) + '%' + (x.pin ? '' : ' · pin in')}</i>`).join('') || 'Empty';
+  if (gear !== logic.gear){ logic.gear = gear; $('gear').innerHTML = gear; }
+  $('sys').textContent = (S.alarmT === null ? 'Silent' : 'Sounding') + ' · ' + (S.power ? 'LIVE' : 'OFF');
+  $('clock').textContent = mmss(T); tasks(); mapT -= dt; if (mapT < 0 && !TRAIN){ mapT = 0.12; drawMap(); }
+  // ---- instructor follows the rescuer
+  if (TRAIN){ if (!finished) lessonTick(dt); }
+  else {
+    if (loc.inside) say(S.alarmT === null || S.power ? 'You are under the failed storey. The fire alarm call point and the main board are on the rear wall ahead. Deal with both before you go up.' : 'You are under the failed storey. Watch the leaning columns. Stairs are rear left.', 'enter');
+    if (loc.fl !== logic.fl && !/Stairs/.test(loc.text)){ if (logic.fl !== undefined && loc.fl > 0) say(`Control has you on the ${FLOORS[loc.fl].toLowerCase()} floor.`, 'floor' + loc.fl + Math.floor(T/40)); logic.fl = loc.fl; }
+    if (GUIDED() && !finished && T - S.lastEvent > 50 && near && !carrying) say(`Life detector shows a casualty in the ${near.where}. You are at: ${loc.text.replace(' · ', ', ')}.`, null);
+    nextQuake -= dt; if (nextQuake < 0 && !finished){ nextQuake = 60 + Math.random()*35; shake = 3.8; log('Aftershock'); flash('AFTERSHOCK', 3200); say('Aftershock! Stop. Hold your position and protect your head.', null, true); }
+  }
+  if (radioT > 0){ radioT -= dt; if (radioT <= 0) $('radio').hidden = true; }
+  for (const s of survivors) if (s.state === 'trapped'){ const u = s.g.userData, close = s.p.distanceTo(P.pos) < 9;
+    u.aR.rotation.x = close ? (u.pose === 'lying' ? -1.5 : -2.5) + Math.sin(now*0.006 + s.phase)*0.35 : (u.pose === 'lying' ? 0.1 : -0.6);
+    u.aR.rotation.z = close ? 0.25 + Math.sin(now*0.006 + s.phase)*0.25 : 0.3; u.up.scale.z = 1 + Math.sin(now*0.002 + s.phase)*0.025; }
+  nextKnock -= dt; if (nextKnock < 0 && near && !carrying){ nextKnock = 3.5 + Math.random()*3; const v = 0.5/(1 + nd*0.22), {pan} = relPan(near.p); for (let i=0;i<3;i++) click(1500, v, pan, i*0.22); }
+  if (shake > 0) shake -= dt;
+  const q = Math.max(0, Math.min(1, shake/1.2)); if (rumbleGain) rumbleGain.gain.value = q*0.55; dust.m.opacity = (CFG.cond === 'dusk' ? 0.25 : 0.4) + q*0.45;
+}
+
+// ---------- evaluation and the trainee report ----------
+function evaluate(){
+  if (TRAIN){ const done = S.lessonLog.length, err = S.wrong.size + S.shocks, notes = [];
+    if (done < lessons.length) notes.push(`Training stopped at lesson ${done + 1}: ${lessons[done].t}. Complete all eight before the rescue drill.`);
+    if (S.wrong.size) notes.push(`Wrong extinguisher chosen ${S.wrong.size} time${S.wrong.size > 1 ? 's' : ''}. Revise: foam or powder for fuel, wet chemical for cooking oil, CO₂ or powder for live electrical.`);
+    if (S.shocks) notes.push(`${S.shocks} electric shock${S.shocks > 1 ? 's' : ''}. Never put a conducting agent on live equipment.`);
+    if (S.heat > 3) notes.push(`${S.heat.toFixed(0)} s inside the heat zone. Stand back and aim at the base of the flames.`);
+    if (!notes.length) notes.push('All lessons completed without a wrong agent or a shock. Cleared for the rescue drill.');
+    return {train:true, done, total:Math.round(100*done/lessons.length), grade:done === lessons.length ? (err ? 'Completed with corrections' : 'Completed') : 'Incomplete', notes,
+      rows:S.lessonLog.map((l, i) => [`${i + 1}. ${l.t}`, mmss(l.time), l.err ? l.err + ' mistake' + (l.err > 1 ? 's' : '') : 'clean'])}; }
+  const n = survivors.length, cas = 30*rescued/n, time = rescued === n ? 10*Math.max(0, Math.min(1, (24*60 - T)/(13*60))) : 0;
+  const fire = 12*S.firesOut/fires.length, wrong = S.wrong.size, choice = S.firesOut || wrong ? Math.max(0, 10*S.firesOut/fires.length - 4*wrong) : 0, entry = 8*S.doorsForced/doors.length;
+  const early = t => t !== null && (S.upT === null || t <= S.upT), alarm = S.alarmT === null ? 0 : early(S.alarmT) ? 6 : 3, power = S.powerT === null ? 0 : early(S.powerT) ? 8 : 4;
+  const pen = [Math.min(6, S.heat), Math.min(6, S.falls*3), Math.min(3, S.runCarry*0.5), Math.min(3, S.quakeMove*0.6), Math.min(8, S.shocks*4)], safety = Math.max(0, 16 - pen.reduce((a, b) => a + b, 0));
+  const total = Math.round(cas + time + fire + choice + entry + alarm + power + safety);
+  const grade = total >= 85 ? 'Competent' : total >= 70 ? 'Proficient' : total >= 50 ? 'Developing' : 'Not yet competent';
+  const notes = [];
+  if (rescued < n) notes.push(`${n - rescued} casualt${n - rescued === 1 ? 'y was' : 'ies were'} left inside. Sweep every room on every floor before you call the building clear.`);
+  if (S.alarmT === null) notes.push('The fire alarm was never raised. Break the call point as soon as you reach the building.'); else if (alarm < 6) notes.push('The alarm was raised only after you had gone upstairs. Raise it first.');
+  if (S.powerT === null) notes.push('The mains was never switched off. Isolate at the main board before working near electrical fires or loose cables.'); else if (power < 8) notes.push('The mains was isolated late. Switch off at the main board before going above ground.');
+  if (wrong) notes.push(`Wrong extinguisher used ${wrong} time${wrong > 1 ? 's' : ''}. Identify the fire first: foam or powder for fuel, wet chemical for cooking oil, CO₂ or powder for live electrical.`);
+  if (S.shocks) notes.push(`${S.shocks} electric shock${S.shocks > 1 ? 's' : ''}. Treat every cable and electrical fire as live until the mains is off.`);
+  if (S.firesOut < fires.length) notes.push('Not all fires were put out. Aim at the base of the flames and sweep until they are fully out.');
+  if (S.heat > 2) notes.push(`You spent ${S.heat.toFixed(0)} s inside the heat zone of a fire. Fight it from the doorway.`);
+  if (S.falls) notes.push(`${S.falls} hard fall${S.falls > 1 ? 's' : ''}. Check slab edges and the stair well before stepping.`);
+  if (S.runCarry > 2) notes.push('You ran while carrying a casualty. Walk, especially on stairs and rubble.');
+  if (S.quakeMove > 1.5) notes.push('You kept moving during an aftershock. Stop and hold position until the shaking ends.');
+  if (!notes.length) notes.push('Clean run. Alarm, isolation, fire fighting and evacuation were all done safely and in the right order.');
+  return {total, grade, notes, rows:[
+    ['Casualties evacuated', `${rescued} of ${n}`, cas, 30], ['Time to clear', rescued === n ? mmss(T) : 'not cleared · ' + mmss(T), time, 10],
+    ['Fire alarm', S.alarmT === null ? 'not raised' : 'raised at ' + mmss(S.alarmT) + (alarm < 6 ? ' · after going upstairs' : ''), alarm, 6],
+    ['Mains isolation', S.powerT === null ? 'not isolated' : 'off at ' + mmss(S.powerT) + (power < 8 ? ' · after going upstairs' : ''), power, 8],
+    ['Fire control', `${S.firesOut} of ${fires.length} fires out`, fire, 12], ['Extinguisher choice', wrong ? `${wrong} wrong agent${wrong > 1 ? 's' : ''} used` : S.firesOut ? 'correct agent every time' : 'no fire fought', choice, 10],
+    ['Forced entry', `${S.doorsForced} of ${doors.length} doors`, entry, 8],
+    ['Safety', `heat ${S.heat.toFixed(0)} s · shocks ${S.shocks} · falls ${S.falls} · ran with casualty ${S.runCarry.toFixed(0)} s · moved in aftershock ${S.quakeMove.toFixed(0)} s`, safety, 16]]};
+}
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let lastReport = null;
+function reportHTML(e, early){
+  const when = (S.startedAt || new Date()), ft = S.floorTime;
+  const head = `<table><tr><th>Trainee</th><th>ID / batch</th><th>Date</th><th>Module</th><th>Conditions</th><th>Duration</th></tr><tr><td>${esc(CFG.name || 'Not given')}</td><td>${esc(CFG.id || '—')}</td><td>${when.toLocaleDateString()} ${when.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td><td>${e.train ? 'Equipment training' : 'Rescue drill · ' + (GUIDED() ? 'guided' : 'assessment')}</td><td>${CFG.cond === 'dusk' ? 'Dusk' : 'Day'}</td><td>${mmss(T)}${early ? ' · ended early' : ''}</td></tr></table>`;
+  const score = e.train ? `<div class="grade"><b>${e.done}/${lessons.length}</b><em>${e.grade}</em><span class="lbl">lessons completed</span></div><table><tr><th>Lesson</th><th>Time</th><th>Result</th></tr>${e.rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('') || '<tr><td colspan="3">No lesson completed</td></tr>'}</table>`
+    : `<div class="grade"><b>${e.total}</b><em>${e.grade}</em><span class="lbl">out of 100</span></div><table><tr><th>Criterion</th><th>Observed</th><th>Score</th></tr>${e.rows.map(r => `<tr><td>${r[0]}</td><td><small>${r[1]}</small></td><td class="n">${r[2].toFixed(1)} / ${r[3]}</td></tr>`).join('')}</table>
+      <h2>Rescuer track</h2><table><tr>${Object.keys(ft).map(k => `<th>${k}</th>`).join('')}</tr><tr>${Object.values(ft).map(v => `<td>${mmss(v)}</td>`).join('')}</tr></table>`;
+  return `${head}${score}<h2>Instructor remarks</h2><ul>${e.notes.map(t => `<li>${t}</li>`).join('')}</ul>
+    <h2>Event log</h2><table><tr><th>Time</th><th>Event</th></tr>${S.log.map(l => `<tr><td>${mmss(l[0])}</td><td>${esc(l[1])}</td></tr>`).join('') || '<tr><td colspan="2">No events recorded</td></tr>'}</table>
+    <div class="sig"><div>Trainee signature</div><div>Instructor signature</div></div>`;
+}
+const canFile = /(^|\.)github\.io$|^localhost$|^127\.|^$/.test(location.hostname);
+function finish(early){
+  if (finished) return; finished = true; paused = true; if (document.exitPointerLock) document.exitPointerLock();
+  if (xrSession){ try { xrSession.end(); } catch(err){} }
+  const e = evaluate(); lastReport = {e, html:reportHTML(e, early)}; if (marker) marker.visible = false;
+  $('oTag').textContent = 'G+2 Collapse Rescue simulator'; $('oTitle').textContent = 'Trainee report'; $('oBody').innerHTML = lastReport.html;
+  $('go').textContent = 'Walk the site'; $('end').hidden = true; $('menu').hidden = false; $('bCopy').hidden = false; $('bPrint').hidden = $('bSave').hidden = !canFile; $('overlay').hidden = false; $('locator').hidden = true; $('overlay').scrollTop = 0;
+  setTimeout(() => say(e.train ? `Training report. ${e.done} of ${lessons.length} lessons completed. ${e.notes[0]}` : `Evaluation. You scored ${e.total} out of 100. Grade: ${e.grade}. ${e.notes[0]}`, null, true), 600);
+}
+$('bPrint').addEventListener('click', () => window.print());
+$('bCopy').addEventListener('click', () => { const t = 'TRAINEE REPORT · G+2 Collapse Rescue simulator\n\n' + $('oBody').innerText; const done = () => { $('bCopy').textContent = 'Copied'; setTimeout(() => $('bCopy').textContent = 'Copy report text', 1600); };
+  const pick = () => { const r = document.createRange(); r.selectNodeContents($('oBody')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+  try { navigator.clipboard.writeText(t).then(done).catch(pick); } catch(err){ pick(); } });
+$('bSave').addEventListener('click', () => { const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trainee report</title><style>body{font:14px/1.5 Arial,sans-serif;max-width:800px;margin:30px auto;padding:0 16px;color:#111}h1{margin:0}table{width:100%;border-collapse:collapse;margin:8px 0}td,th{border-bottom:1px solid #999;padding:5px 6px;text-align:left;vertical-align:top}th{font-size:11px;text-transform:uppercase;color:#444}.grade b{font-size:46px;margin-right:14px}.grade em{font-size:22px;font-style:normal;margin-right:10px}.n{text-align:right;white-space:nowrap}small{color:#444}.sig{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:50px}.sig div{border-top:1px solid #111;padding-top:4px}</style></head><body><h1>Trainee report</h1><p>G+2 Collapse Rescue simulator</p>${lastReport.html}</body></html>`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([doc], {type:'text/html'})); a.download = 'trainee-report-' + (CFG.name || 'trainee').replace(/\W+/g, '-').toLowerCase() + '.html'; document.body.appendChild(a); a.click(); a.remove(); });
+
+let last = 0; const cw = V3(0,0,0);
+function frame(now){
+  const dt = Math.min(0.05, (now - last)/1000 || 0.016); last = now;
+  if (xrOn && xrSession){ camera.getWorldDirection(tv); moveYaw = Math.atan2(-tv.x, -tv.z); pollXR(); } else moveYaw = P.yaw;
+  if (!paused){ move(dt/2); move(dt/2); logic(dt, now); } else for (const f of fires) f.update(dt);
+  const q = Math.max(0, Math.min(1, shake/1.2)) * 0.07, bobY = Math.sin(P.bob)*0.035*(P.eye/1.6);
+  rig.position.set(P.pos.x, P.pos.y + (xrOn ? xrFloor - (1.6 - P.eye) : 0), P.pos.z); rig.rotation.y = P.yaw;
+  if (!xrOn){ camera.position.set(s2()*q, P.eye + bobY + s2()*q, s2()*q); camera.rotation.set(P.pitch, 0, s2()*q*0.6); }
+  else { rig.position.x += s2()*q; rig.position.z += s2()*q; vrT -= dt; if (vrT < 0){ vrT = 0.2; drawVrHud(); } }
+  camera.getWorldPosition(cw);
+  const a = dust.p, cp = [cw.x, cw.y, cw.z];
+  for (let i=0;i<dust.n;i++){ a[i*3] += Math.sin(now*0.0003 + i)*0.004 + 0.003; a[i*3+1] -= 0.0025 + q*0.02; a[i*3+2] += Math.cos(now*0.0002 + i*1.3)*0.004;
+    for (let k=0;k<3;k++){ const h = dustBox[k]/2, d = a[i*3+k] - cp[k]; if (d > h) a[i*3+k] -= h*2; else if (d < -h) a[i*3+k] += h*2; } }
+  dust.g.attributes.position.needsUpdate = true; listen();
+  renderer.render(scene, camera);
+}
+renderer.render(scene, camera);
+</script>
+</body>
+</html>
